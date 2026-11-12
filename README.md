@@ -1,53 +1,44 @@
 # M1 Project Hub
 
-Separate M1 dashboard prepared for GitHub Pages and a Cloudflare Worker. It does not modify the SB05 dashboard, use its saved reviews or copy its secrets.
+Public dashboard: https://emansour07.github.io/M1_Project_Hub/
+
+Cloudflare API and owner controls: https://m1-project-api.eslam-mansour.workers.dev/admin
 
 ## Pages
 
-- Reviews: coloured status chart, discipline workload, deadline KPIs (including due in 48h), searchable/filterable register, CSV export and direct Autodesk review links. No drawing workload or package-content popup.
-- Knowledge Hub: searchable placeholders for submission, review, CDE and model-coordination procedures. Actual M1 content will be supplied by the project team; no generic procedures are presented as project rules.
-- Model Progress: original-design availability by asset and discipline, matching evidence, missing deliverables, unmapped-file count and CSV export.
+- Reviews: status and discipline charts, due-in-48-hours and overdue filters, workflow register and Autodesk links. No drawing workload or package popup.
+- Knowledge Hub: searchable existing-to-proposed asset-code crosswalk from the current TIDP's Asset Tagging Naming sheet. Submission, review, CDE and coordination procedures remain placeholders for the M1 team.
+- Model Progress: received reference drawings/models, developed RVT and infrastructure DWG models, separate LOG and LOI from the tracker, and actual ACC file updates older than seven days.
 
-## Project configuration
+## Data sources and matching
 
-- M1 ACC project: e80ed581-2f73-4b70-a8d1-f100b9b95f4d, EU region.
-- Original design source: 0.5.4_Reference_Drawings (Island, Mainland, Other Assets and Subsea).
-- Baseline source: MIDP_M1.xlsx supplied by the project owner. Asset/discipline and original-file mappings must be verified before publishing availability conclusions.
-- Public team dashboard: https://emansour07.github.io/M1_Project_Hub/
-- Separate backend: https://m1-project-api.eslam-mansour.workers.dev
-- Owner controls require a private owner code. Team viewing does not require sign-in.
-- The dedicated M1 APS application is configured and owner sign-in is connected. M1 ACC hub integration approval and the baseline mapping are pending. Scheduled synchronisation remains disabled until setup is complete.
+M1 project e80ed581-2f73-4b70-a8d1-f100b9b95f4d is in ACC EU. Fixed source IDs are in sources.mjs. Original references exclude Other Assets. Both progressed-model folders are checked recursively. The TIDP and tracker are retrieved from their current ACC item tips, so new versions retain the same source links.
 
-## Build and validate
+Asset codes match complete filename fields or whole folder-name tokens. Ambiguous old codes remain unresolved. Original receipts are grouped by asset and discipline; receipt does not establish approval or completeness. The tracker provides the developed-model list for the missing-file comparison. Duplicate tracker names do not produce an invented percentage. Unknown progress is not zero. LOG and LOI are never blended. All developed models are checked for staleness, including those without a matching tracker row.
 
-Requires Node 22+.
+Scans use SQLite rows per folder and file, retain the last complete generation, and publish only after all three folder trees finish. Partial and failed scans never replace the complete view. Reference-root visibility must include Island, Mainland and Subsea. The reference count is limited to files the integration can read; folder access must be verified before enabling synchronization.
 
-```sh
-node --test tests/*.test.mjs
-node build.cjs
-```
+## Identity and hosting
 
-The `pages/` folder is the static frontend. Serve it over HTTP. `node build.cjs --release` refuses publication until the M1 project ID, API origin and Pages URL are configured.
+The separate M1_Project_Hub_Service Server-to-Server APS application uses an Autodesk Secure Service Account (SSA). M1 membership and folder permissions restrict its access. There is no personal-token fallback and no change to SB05. The token scope is data:read. Worker secrets contain the app secret, SSA private key, token encryption key and owner-code pepper; none belong in this repository.
 
-## Hosting
+Viewers need no sign-in. Owner-code access protects setup, workbook refresh and owner settings. The historical baseline upload endpoint remains compatible, but the current Model Progress page uses the tracker and mapped original references.
 
-Set the confirmed values in `config.js` and `wrangler.jsonc`; select the intended Cloudflare account. Keep `FORMA_BATCHED=true`. Add Cloudflare Worker secrets through Wrangler's hidden-input prompts: `APS_CLIENT_ID`, `APS_CLIENT_SECRET`, `APS_CALLBACK_URL`, `APS_TOKEN_KEY` (32 random bytes encoded as base64), and a new `M1_ADMIN_KEY` (at least 40 random characters). Never reuse the SB05 owner key or encryption key. Register the new Worker's `/api/forma/callback` URL in the Autodesk application. The application must be authorised for the M1 account/project.
+Deployment gates in wrangler.jsonc: FORMA_SYNC_ENABLED enables scheduled updates only after source access is verified. REVIEWS_ACCESS_VERIFIED separately gates review synchronization; an empty list from a restricted member must not be presented as all project reviews.
 
-Publish the separate Worker with `npx wrangler deploy`, then initialise owner access using the private expiring setup link, choose a personal code at `/admin/code`, and connect Autodesk at `/admin`. Set `FORMA_SYNC_ENABLED=true` once setup is confirmed. The owner can upload the prepared baseline JSON in the owner controls. Credentials and tokens remain on Cloudflare, not GitHub Pages.
+Each scheduled tick uses at most 20 review reads, 18 folder reads and one workbook download (3 provider requests), plus token renewal. Workbooks refresh every 15 minutes; folder scans restart after five minutes and resume across ticks. Manual refresh is throttled. Cloudflare's free-plan limits still apply.
 
-The GitHub Actions workflow builds and publishes Pages from `main`. Set Pages source to GitHub Actions. Frontend and backend use separate M1 addresses; SB05 is unchanged. Public viewers can refresh shared data. Only the owner can change the baseline or Autodesk connection.
+## Build and validation
 
-## Availability rules
+Use Node 22.13 or newer:
 
-- Each required baseline record represents one expected deliverable. `names` lists exact accepted alternative filenames (case-insensitive). Multiple records represent multiple required deliverables. Optional `folderId` disambiguates files with the same name.
-- Explicit `required:false` means not required. An undefined asset/discipline combination is not checked, never automatically not required.
-- RVT, IFC, NWC and NWD are model formats. A PDF/CAD drawing does not satisfy a model requirement.
-- Recursive folder scans follow pagination. A complete scan replaces the snapshot atomically; failed scans retain the prior completed snapshot and its timestamp. Missing is never inferred from a partial scan.
-- Available means all expected deliverables are present, not approved or design-complete. Native and exchange deliverables can be separate requirements when both are needed.
-- Folder checks are capped at 20 Autodesk reads per invocation; reviews have their own 20-read batch. The minute Worker schedule advances unfinished work. New scans are throttled to five minutes, manual starts to one minute. These settings target the free plan and do not guarantee zero cost if Cloudflare changes its limits or the account enables billing.
+    npm ci --ignore-scripts
+    node --test tests/*.test.mjs
+    node build.cjs --release
+    npx wrangler deploy
 
-## API references
+GitHub Actions publishes pages/ from main. The frontend contains no workbook contents or credentials; it reads shared normalized data from Cloudflare. Both workbook and scan failures retain the previous saved data.
 
-Autodesk [Data Management](https://aps.autodesk.com/data-management-api), [data browsing tutorial](https://get-started.aps.autodesk.com/tutorials/hubs-browser/data), and [folder contents endpoint](https://aps.autodesk.com/en/docs/data/v2/reference/http/projects-project_id-folders-folder_id-contents-GET/). Review synchronisation and owner-code authentication are adapted from the existing SB05 implementation.
+## References
 
-Status: GitHub Pages and the separate Cloudflare backend are live. Owner-code setup and Autodesk sign-in are verified. Hub integration approval and model-baseline matching remain pending; empty states are intentional until verified.
+[Autodesk SSA](https://aps.autodesk.com/blog/update-secure-service-accounts-ssa-goes-ga), [folder permissions](https://help.autodesk.com/view/DOCS/ENU/?guid=Folder_Permissions), [review permissions](https://help.autodesk.com/cloudhelp/ENU/Docs-Reviews/files/getting-started-reviews/Reviews_Permissions.html), [Data Management](https://aps.autodesk.com/en/docs/data/v2/overview/basics).

@@ -1,9 +1,12 @@
 import {DurableObject} from 'cloudflare:workers';
 import {createHandler,stored,validateSnapshot} from '../worker.mjs';
 import {syncForma} from '../forma.mjs';
-import {syncModels,modelSnapshot,saveBaseline} from '../models.mjs';
+import {saveBaseline} from '../models.mjs';
+import {syncProgress,progressSnapshot} from '../progress.mjs';
 import {validBaseline} from '../model-core.mjs';
 import {SQLiteStore} from './store.mjs';
+import {checkSourceAccess} from '../sources.mjs';
+import {syncWorkbook,workbookSnapshot} from '../workbooks.mjs';
 import {isOwner,sessionCookie,readLoginKey,readLoginForm,loginPage} from './auth.mjs';
 import {OwnerCodeAuth,codePage,codeSavedPage} from './owner-code.mjs';
 import adminHtml from './admin.html';
@@ -12,8 +15,8 @@ const json=(value,status=200)=>new Response(JSON.stringify(value),{status,header
 const redirect=path=>new Response(null,{status:303,headers:{Location:path}});
 function secure(response){const h=new Headers(response.headers);h.set('Cache-Control','no-store');h.set('X-Content-Type-Options','nosniff');h.set('X-Frame-Options','DENY');if(!h.has('Referrer-Policy'))h.set('Referrer-Policy','no-referrer');return new Response(response.body,{status:response.status,headers:h});}
 export class M1State extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.env={...env,BUCKET:new SQLiteStore(ctx.storage)};this.auth=new OwnerCodeAuth(ctx.storage.sql,env.M1_ADMIN_KEY);}
- async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models'].includes(url.pathname))||(request.method==='POST'&&url.pathname==='/api/refresh'))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
+ constructor(ctx,env){super(ctx,env);this.env={...env,BUCKET:new SQLiteStore(ctx.storage),SQL:ctx.storage.sql};this.auth=new OwnerCodeAuth(ctx.storage.sql,env.M1_ADMIN_KEY);}
+ async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models','/api/knowledge'].includes(url.pathname))||(request.method==='POST'&&url.pathname==='/api/refresh'))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
  async handle(request){const env=this.env,url=new URL(request.url),path=url.pathname;
   if(path==='/health')return json({ok:true,project:'M1'});
   if(path==='/')return env.FRONTEND_URL?redirect(env.FRONTEND_URL):new Response('M1 project setup is pending.',{headers:{'Content-Type':'text/plain'}});
@@ -34,6 +37,13 @@ export class M1State extends DurableObject{
    return new Response(null,{status:303,headers:{Location:'/admin','Set-Cookie':await sessionCookie(secret,url.origin)}});
   }
   const owner=await isOwner(request,secret);
+  if(path==='/api/models/access'&&request.method==='GET')return owner?json(await checkSourceAccess(env)):json({error:'Owner access required.'},403);
+  if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await workbookSnapshot(env,'tidp')});
+  if(path==='/api/workbooks/sync'){
+   if(!owner||request.method!=='POST'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);
+   const result=[];for(const key of ['tidp','tracker']){try{const data=await syncWorkbook(env,key);result.push({source:key,ok:true,rows:data.rows.length});}catch(e){result.push({source:key,ok:false,error:e.message});}}
+   return json({results:result});
+  }
   if(path==='/admin/code'){
    if(!owner)return redirect('/admin/login');
    if(request.method==='GET')return new Response(codePage(),{headers:{'Content-Type':'text/html;charset=utf-8','Referrer-Policy':'same-origin'}});
@@ -43,7 +53,7 @@ export class M1State extends DurableObject{
    const next=await this.auth.change(code,credential);if(!next)return json({error:'Please sign in again.'},409);
    return new Response(codeSavedPage(),{headers:{'Content-Type':'text/html;charset=utf-8','Set-Cookie':await sessionCookie(this.auth.sessionSecret(next),url.origin)}});
   }
-  if(path==='/api/models'&&request.method==='GET')return json(await modelSnapshot(env));
+  if(path==='/api/models'&&request.method==='GET')return json({baseline:{assets:[],disciplines:[],requirements:[]},...await progressSnapshot(env)});
   if(path==='/api/models/baseline'){
    if(!owner||request.method!=='PUT'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);
    // Stream-bound reads prevent oversized requests from exhausting Worker memory.
@@ -53,7 +63,7 @@ export class M1State extends DurableObject{
   if(path==='/api/refresh'){
    if(request.method!=='POST'||![url.origin,env.FRONTEND_ORIGIN].includes(request.headers.get('Origin')))return json({error:'Request not accepted.'},403);
    // Sequential: both tasks share the encrypted Autodesk token. Max 40 provider reads plus token refresh.
-   const results=[];for(const task of [()=>syncForma(env,stored,validateSnapshot,true),()=>syncModels(env,true)]){try{results.push(await task());}catch{results.push({error:true});}}
+   const results=[];for(const task of [()=>env.REVIEWS_ACCESS_VERIFIED==='true'?syncForma(env,stored,validateSnapshot,true):Promise.resolve({skipped:true}),()=>syncProgress(env,true)]){try{results.push(await task());}catch{results.push({error:true});}}
    if(results.every(r=>r.error))return json({error:'Unable to update right now.'},503);return json({updating:results.some(r=>r.updating),partialFailure:results.some(r=>r.error)});
   }
   if(path==='/admin'&&!owner)return redirect('/admin/login');
@@ -63,7 +73,7 @@ export class M1State extends DurableObject{
   const response=await app.fetch(new Request(new Request(url,request),{headers}),env);
   if(path==='/api/forma/callback'&&response.status===303){const h=new Headers(response.headers);if(h.get('Location')?.startsWith('/?forma='))h.set('Location','/admin'+h.get('Location').slice(1));return new Response(response.body,{status:303,headers:h});}return response;
  }
- async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncModels(this.env).catch(()=>{});}
+ async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncProgress(this.env).catch(()=>{});for(const key of ['tidp','tracker']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
 export default {fetch:(request,env)=>state(env).fetch(request),scheduled:(event,env,ctx)=>ctx.waitUntil(state(env).tick())};

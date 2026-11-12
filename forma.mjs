@@ -1,3 +1,4 @@
+import {serviceAccessToken,serviceConfigured} from './ssa.mjs';
 // Autodesk Reviews integration. All provider calls and credentials remain server-side.
 const project=env=>{const id=String(env.ACC_PROJECT_ID||'').replace(/^b\./,'');if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error('Configure the M1 project first.');return id;};
 const FROOT='m1/forma/', API='https://developer.api.autodesk.com', PERIOD=300000;
@@ -5,7 +6,7 @@ const fj=(v,status=200,headers={})=>new Response(JSON.stringify(v),{status,heade
 const txt=v=>typeof v==='string'?v.trim():v==null?'':String(v);
 const epoch=v=>{if(!v)return null;const n=Date.parse(v);if(!Number.isFinite(n))throw Error('Invalid Autodesk date.');return n;};
 const enc=new TextEncoder();
-function configured(env){return ['APS_CLIENT_ID','APS_CLIENT_SECRET','APS_CALLBACK_URL','APS_TOKEN_KEY','ACC_PROJECT_ID'].every(k=>!!env[k]);}
+function configured(env){if(env.APS_AUTH_MODE==='ssa')return serviceConfigured(env);return ['APS_CLIENT_ID','APS_CLIENT_SECRET','APS_CALLBACK_URL','APS_TOKEN_KEY','ACC_PROJECT_ID'].every(k=>!!env[k]);}
 async function readF(env,key){const o=await env.BUCKET.get(FROOT+key);return o?{value:await o.json(),etag:o.etag}:null;}
 async function putF(env,key,value,etag){return env.BUCKET.put(FROOT+key,JSON.stringify(value),etag?{onlyIf:{etagMatches:etag}}:{});}
 async function aes(env){const raw=Uint8Array.from(atob(env.APS_TOKEN_KEY),c=>c.charCodeAt(0));if(raw.length!==32)throw Error('Invalid token encryption key.');return crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);}
@@ -19,10 +20,10 @@ async function tokenRequest(env,body){
  const t=await r.json();if(!t.access_token||!t.refresh_token||!Number.isFinite(t.expires_in))throw Error('Invalid Autodesk token response.');
  return {...t,expiresAt:Date.now()+t.expires_in*1000};
 }
-export async function accessToken(env){const saved=await readF(env,'tokens');if(!saved)throw Error('Autodesk is not connected.');let t=await unseal(env,saved.value);if(t.expiresAt<Date.now()+120000){t=await tokenRequest(env,{grant_type:'refresh_token',refresh_token:t.refresh_token});if(!await putF(env,'tokens',await seal(env,t),saved.etag))throw Error('Connection changed. Retry synchronization.');}return t.access_token;}
+export async function accessToken(env){if(env.APS_AUTH_MODE==='ssa')return serviceAccessToken(env,seal,unseal);const saved=await readF(env,'tokens');if(!saved)throw Error('Autodesk is not connected.');let t=await unseal(env,saved.value);if(t.expiresAt<Date.now()+120000){t=await tokenRequest(env,{grant_type:'refresh_token',refresh_token:t.refresh_token});if(!await putF(env,'tokens',await seal(env,t),saved.etag))throw Error('Connection changed. Retry synchronization.');}return t.access_token;}
 export async function getAPS(path,token){
  const r=await fetch(API+path,{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(20000)});
- if(!r.ok){const e=new Error(r.status===429?'Autodesk request limit reached. The previous snapshot is retained.':r.status===403?'Autodesk denied project access. Ask the Account Admin to register the Client ID in Custom Integrations.':r.status===401?'Autodesk authorization expired. Reconnect Autodesk.':'Autodesk review retrieval failed. The previous snapshot is retained.');e.status=r.status;throw e;}
+ if(!r.ok){const e=new Error(r.status===429?'Autodesk request limit reached. The previous snapshot is retained.':r.status===403?'Autodesk denied project access. Ask the Account Admin to register the Client ID in Custom Integrations.':r.status===401?'Autodesk authorization expired. Reconnect Autodesk.':'Autodesk review retrieval failed. The previous snapshot is retained.');e.status=r.status;try{const detail=await r.json();e.providerError=JSON.stringify(detail.errors||detail.errorCode||detail.developerMessage||detail.message||{}).slice(0,800);}catch{}throw e;}
  return r.json();
 }
 export async function listAPS(path,token,read=getAPS){
@@ -141,7 +142,7 @@ export async function formaRoutes(request,env,owner,readSnapshot,validate){
  if(!path.startsWith('/api/forma/'))return null;
  if(path==='/api/forma/status'&&request.method==='GET'){
   const state=env.BUCKET?(await readF(env,'status'))?.value||{}:{};
-  const tokens=env.BUCKET?!!await readF(env,'tokens'):false;
+  const tokens=env.APS_AUTH_MODE==='ssa'?serviceConfigured(env):env.BUCKET?!!await readF(env,'tokens'):false;
   return fj({configured:configured(env),connected:tokens,projectId:project(env),lastSuccessAt:state.lastSuccessAt||null,lastAttemptAt:state.lastAttemptAt||null,error:state.error||null,intervalMinutes:5,...(owner?{callbackUrl:u.origin+'/api/forma/callback',schedulerConfigured:!!env.M1_SYNC_SECRET}: {})});
  }
  if(path==='/api/forma/refresh'&&request.method==='POST'){
@@ -156,6 +157,7 @@ export async function formaRoutes(request,env,owner,readSnapshot,validate){
   try{return fj(await syncForma(env,readSnapshot,validate));}catch(e){return fj({error:e.message},503);}
  }
  if(!owner)return fj({error:'Owner access required.'},403);
+ if(env.APS_AUTH_MODE==='ssa')return fj({error:'M1 uses its project service account. Personal Autodesk sign-in is disabled.'},409);
  if(!configured(env)||!env.BUCKET)return fj({error:'Autodesk application setup is incomplete. Configure the application credentials before connecting.'},503);
  if(env.APS_CALLBACK_URL!==u.origin+'/api/forma/callback')return fj({error:'The Autodesk callback URL does not match this site.'},503);
  if(path==='/api/forma/connect'&&request.method==='POST'){

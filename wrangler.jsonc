@@ -19,7 +19,9 @@
     "FRONTEND_ORIGIN": "https://emansour07.github.io",
     "FRONTEND_URL": "https://emansour07.github.io/M1_Project_Hub/",
     "FORMA_SYNC_ENABLED": "false",
-    "FORMA_BATCHED": "true"
+    "FORMA_BATCHED": "true",
+    "APS_AUTH_MODE": "ssa",
+    "REVIEWS_ACCESS_VERIFIED": "false"
   },
   "triggers": {
     "crons": [
