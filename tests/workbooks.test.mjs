@@ -10,6 +10,13 @@ test('old and proposed codes resolve to one asset without substring matches',()=
 test('reused codes stay ambiguous and unknown codes remain unmapped',()=>{
  assert.deepEqual(resolveAsset('BT3',mapping),{code:null,candidates:['B01','B02']});assert.equal(resolveAsset('XYZ',mapping).code,null);
 });
+test('parcel scopes reused legacy codes to the correct section',()=>{
+ const rows=[{section:'10.2',existing:'A48',proposed:'CRA'},{section:'12.1',existing:'A48',proposed:'GS5'}];
+ assert.equal(assetFromFilename('M1-102-PAR-A48-05-BM012-BNM-XX-000001.rvt',rows).code,'CRA');
+ assert.equal(assetFromFilename('M1-121-PAR-A48-05-BM012-BNM-XX-000001.rvt',rows).code,'GS5');
+ assert.equal(assetFromFilename('M1-FXX-PAR-A48-05-BM012-BNM-XX-000001.rvt',rows).code,null);
+ assert.equal(assetFromFilename('M1-FXX-PAR-A48-05-BM012-BNM-XX-000001.rvt',rows,'either','P10.2').code,'CRA');
+});
 test('mapping parser retains sections, missing old codes and multiple destinations',()=>{
  const rows=[['Primary'],[null,null,null,null,'Section / Existing','Description','Proposed'],[null,null,null,null,null,'1.1'],[null,null,null,null,'BT3','Buffer tank 1','B01'],[null,null,null,null,'BT3','Buffer tank 2','B02'],[null,null,null,null,null,'New asset','N01']];
  const r=parseAssetRows(rows);assert.equal(r.length,3);assert.equal(r[0].section,'1.1');assert.equal(r[2].existing,null);assert.equal(r[1].row,5);

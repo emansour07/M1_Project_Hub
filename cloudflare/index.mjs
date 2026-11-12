@@ -37,7 +37,7 @@ export class M1State extends DurableObject{
    return new Response(null,{status:303,headers:{Location:'/admin','Set-Cookie':await sessionCookie(secret,url.origin)}});
   }
   const owner=await isOwner(request,secret);
-  if(path==='/api/models/access'&&request.method==='GET')return owner?json(await checkSourceAccess(env)):json({error:'Owner access required.'},403);
+  if(path==='/api/models/access'&&request.method==='GET')return owner?json({...await checkSourceAccess(env),progress:await (await env.BUCKET.get('m1/progress/state'))?.json()}):json({error:'Owner access required.'},403);
   if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await workbookSnapshot(env,'tidp')});
   if(path==='/api/workbooks/sync'){
    if(!owner||request.method!=='POST'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);

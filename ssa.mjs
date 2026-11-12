@@ -11,8 +11,8 @@ export async function serviceAssertion(env,now=Date.now()){
  return body+'.'+b64url(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,enc.encode(body)));
 }
 export async function serviceAccessToken(env,seal,unseal){
- const storeKey='m1/ssa/token',saved=await env.BUCKET.get(storeKey);if(saved){const value=await unseal(env,await saved.json());if(value.issuedAt>Date.now()-900000&&value.clientId===env.APS_CLIENT_ID&&value.expiresAt>Date.now()+120000)return value.access_token;}
+ const storeKey='m1/ssa/token',saved=await env.BUCKET.get(storeKey);if(saved){const value=await unseal(env,await saved.json());if(value.issuedAt>Date.now()-900000&&value.clientId===env.APS_CLIENT_ID&&value.permissionVersion===(env.APS_PERMISSION_VERSION||'')&&value.expiresAt>Date.now()+120000)return value.access_token;}
  const assertion=await serviceAssertion(env),r=await fetch(API,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(20000),headers:{Authorization:'Basic '+btoa(env.APS_CLIENT_ID+':'+env.APS_CLIENT_SECRET),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion,scope:'data:read'})});
  if(!r.ok)throw Error('M1 service account authentication failed ('+r.status+').');const token=await r.json();if(!token.access_token||!Number.isFinite(token.expires_in))throw Error('Invalid service account token response.');
- await env.BUCKET.put(storeKey,JSON.stringify(await seal(env,{issuedAt:Date.now(),clientId:env.APS_CLIENT_ID,access_token:token.access_token,expiresAt:Date.now()+token.expires_in*1000})));return token.access_token;
+ await env.BUCKET.put(storeKey,JSON.stringify(await seal(env,{issuedAt:Date.now(),permissionVersion:env.APS_PERMISSION_VERSION||'',clientId:env.APS_CLIENT_ID,access_token:token.access_token,expiresAt:Date.now()+token.expires_in*1000})));return token.access_token;
 }
