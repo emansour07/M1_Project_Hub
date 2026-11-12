@@ -13,3 +13,10 @@ test('permission failure retains the last complete generation',async()=>{
  await assert.rejects(()=>syncProgress(env,true,async()=>{throw Error('Forbidden');},async()=>'test'));
  const s=JSON.parse(objects.get('m1/progress/state'));assert.equal(s.published,'last');assert.equal(s.checkedAt,123);assert.equal(s.active,false);db.close();
 });
+test('retry resumes staged folders instead of discarding completed work',async()=>{
+ const {env,objects,db}=environment();let failed=false,rootReads=0;
+ const read=async path=>{const id=decodeURIComponent(path.split('/folders/')[1].split('/contents')[0]);if(id===sources.reference){rootReads++;return {data:[folder('island','Island'),folder('mainland','Mainland'),folder('subsea','Subsea')]};}if(id===sources.progress1&&!failed){failed=true;throw Error('Temporary provider error');}return {data:[]};};
+ await assert.rejects(()=>syncProgress(env,true,read,async()=>'test'));
+ const s=JSON.parse(objects.get('m1/progress/state'));assert.ok(s.retryGeneration);s.nextAt=0;s.lastAttempt=0;objects.set('m1/progress/state',JSON.stringify(s));
+ assert.equal((await syncProgress(env,true,read,async()=>'test')).ok,true);assert.equal(rootReads,1);assert.equal((await progressSnapshot(env)).scan.complete,true);db.close();
+});

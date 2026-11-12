@@ -9,7 +9,7 @@ function date(v){
  if(!/(?:Z|[+-]\d\d:\d\d)$/.test(s))s+=' +03:00';
  const t=Date.parse(s);return Number.isFinite(t)?t:null;
 }
-function discipline(w){const s=clean(w).toUpperCase();if(/(?:^|_)ARC?(?:_|$)/.test(s))return 'Architecture';if(/(?:^|_)STR?(?:_|$)/.test(s))return 'Structure';if(/(?:^|_)MECH?(?:_|$)|(?:^|_)MEC(?:_|$)/.test(s))return 'Mechanical';if(/(?:^|_)ELEC?(?:_|$)/.test(s))return 'Electrical';if(/(?:^|_)CIV(?:_|$)/.test(s))return 'Civil';return clean(w)||'Unmapped';}
+function discipline(w){const s=clean(w).toUpperCase();if(/(?:^|_)(?:ARC|ARCH)(?:_|$)/.test(s))return 'Architecture';if(/(?:^|_)STR?(?:_|$)/.test(s))return 'Structure';if(/(?:^|_)MECH?(?:_|$)|(?:^|_)MEC(?:_|$)/.test(s))return 'Mechanical';if(/(?:^|_)ELEC?(?:_|$)/.test(s))return 'Electrical';if(/(?:^|_)CIV(?:_|$)/.test(s))return 'Civil';if(/(?:^|_)MARINE(?:_|$)/.test(s))return 'Marine';if(/(?:^|_)GEO(?:_|$)/.test(s))return 'Geotechnical';if(/(?:^|_)(ROD|ROADS)(?:_|$)/.test(s))return 'Roads';if(/(?:^|_)UTL(?:_|$)/.test(s))return 'Utilities';return clean(w)||'Unmapped';}
 function parseWorkbook(wb,XLSX,name){
  const matrices=wb.SheetNames.map(n=>({name:n,rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null,raw:true})}));
  let sheet,hi=-1;

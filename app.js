@@ -7,7 +7,7 @@ const palette=['#268671','#bb8e3b','#bb5c51','#58869e','#9b7cac','#8c927b'];
 const date=t=>t?new Date(t).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—';
 const stamp=t=>t?new Date(t).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
 const empty=(title,body)=>`<div class="empty"><span class="empty-mark">↗</span><strong>${esc(title)}</strong><p>${esc(body)}</p></div>`;
-const rows=()=>snapshot?.reviews?.filter(r=>!/\bVOID(?:ED)?\b/i.test(r.status))||[];
+const rows=()=>snapshot?.reviews?.map(r=>({...r,discipline:C.discipline(r.workflow)})).filter(r=>!/\bVOID(?:ED)?\b/i.test(r.status))||[];
 const tone=s=>/overdue|missing|reject|resubmit|over 7|not found/i.test(s)?'red':/48h|partial/i.test(s)?'gold':/closed|available|approved|on track|received|updated this week/i.test(s)?'green':/open|not checked/i.test(s)?'blue':'neutral';
 const tag=s=>`<span class="tag ${tone(s)}">${esc(s)}</span>`;
 function notice(s){$('notice').textContent=s;$('notice').hidden=!s;}

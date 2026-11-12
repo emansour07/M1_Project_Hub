@@ -18,12 +18,13 @@ export async function progressSnapshot(env){
  return {scan:buildProgress(files,mapping?.rows||[],tracker?.rows||[],s.checkedAt),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,checking:{active:!!s.active,failed:!!s.error}};
 }
 export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken){
- const sql=env.SQL;init(sql);let s=await state(env);const now=Date.now();if(s.leaseUntil>now)return {updating:true};
+ const sql=env.SQL;init(sql);let s=await state(env),activeTask=null;const now=Date.now();if(s.leaseUntil>now)return {updating:true};
  if(!s.active&&s.nextAt>now&&(!manual||s.lastAttempt+60000>now))return {skipped:true};
  s.leaseUntil=now+120000;await save(env,s);
  try{
   const project='b.'+env.ACC_PROJECT_ID.replace(/^b\./,'');
   if(!await workbookSnapshot(env,'tidp')||!await workbookSnapshot(env,'tracker'))throw Error('The asset mapping and progress tracker must be read first.');
+  if(!s.active&&s.retryGeneration&&s.generation&&now-s.startedAt<12*3600000){s.active=true;s.error=null;s.retryGeneration=false;s.lastAttempt=now;await save(env,s);}
   if(!s.active){
    const generation=crypto.randomUUID();s={...s,generation,active:true,startedAt:now,lastAttempt:now,pages:0,error:null};
    sql.exec('DELETE FROM progress_queue WHERE generation<>?',s.published||'');sql.exec('DELETE FROM progress_files WHERE generation<>?',s.published||'');
@@ -34,7 +35,7 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
   const token=await getToken(env);let count=0;
   while(count<18){
    const row=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT 1',s.generation).toArray()[0];if(!row)break;
-   const task=JSON.parse(row.task),page=await readApi(task.path,token);count++;
+   const task=JSON.parse(row.task);activeTask=task;const page=await readApi(task.path,token);count++;
    if(!Array.isArray(page.data))throw Error('Incomplete folder contents.');
    if(task.source==='reference'&&task.folderId===sources.reference&&!page.links?.next){
     const names=new Set(page.data.filter(x=>x.type==='folders').map(x=>String(x.attributes?.displayName||x.attributes?.name).toLowerCase()));
@@ -58,6 +59,6 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
   }
   if(!sql.exec('SELECT 1 FROM progress_queue WHERE generation=? AND done=0 LIMIT 1',s.generation).toArray().length){s.published=s.generation;s.checkedAt=Date.now();s.active=false;s.nextAt=Date.now()+300000;}
   return {updating:s.active,ok:!s.active};
- }catch(e){s.active=false;s.error=e.message;s.nextAt=Date.now()+300000;throw e;}
+ }catch(e){s.active=false;s.error=e.message;s.retryGeneration=!!s.generation&&Date.now()-s.startedAt<12*3600000;s.lastAttempt=Date.now();s.lastFailure={at:Date.now(),message:e.message,status:e.status||null,detail:e.providerError||null,task:activeTask};s.nextAt=Date.now()+300000;throw e;}
  finally{s.leaseUntil=0;await save(env,s);}
 }
