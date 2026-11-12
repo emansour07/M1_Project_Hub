@@ -1,0 +1,9 @@
+{
+  "description":"Illustrative schema only. Replace all example values with the agreed M1 baseline before upload.",
+  "assets":[{"id":"EXAMPLE-ASSET","name":"Example asset"}],
+  "disciplines":[{"id":"ARC","name":"Architecture"},{"id":"STR","name":"Structure"}],
+  "requirements":[
+    {"id":"EXAMPLE-ARC-01","asset":"EXAMPLE-ASSET","discipline":"ARC","required":true,"label":"Original architectural design","names":["EXAMPLE-ARC.rvt","EXAMPLE-ARC.ifc"]},
+    {"id":"EXAMPLE-STR-NA","asset":"EXAMPLE-ASSET","discipline":"STR","required":false}
+  ]
+}

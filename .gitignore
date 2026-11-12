@@ -1,0 +1,10 @@
+node_modules/
+pages/
+.wrangler/
+.dev.vars
+.env
+*.env
+*.zip
+*.log
+preview-data.json
+private/
