@@ -1,3 +1,4 @@
+import {formatState,formatSnapshot,syncFormats} from './format-audit.mjs';
 import {accessToken,getAPS} from './forma.mjs';
 import {sources} from './sources.mjs';
 import {folderPath,nextPath} from './models.mjs';
@@ -19,7 +20,8 @@ export async function progressSnapshot(env){
  const s=await state(env);if(!s.published)return {scan:null,checking:{active:!!s.active,failed:!!s.error}};
  init(env.SQL);const files=env.SQL.exec('SELECT body FROM progress_files WHERE generation=?',s.published).toArray().map(r=>JSON.parse(r.body));
  const mapping=await workbookSnapshot(env,'tidp'),tracker=await workbookSnapshot(env,'tracker'),midp=await workbookSnapshot(env,'midp');
- return {scan:buildProgress(files,mapping?.rows||[],tracker?.rows||[],s.checkedAt,Date.now(),midp?.rows||[]),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,baselineSource:midp?.source||null,checking:{active:!!s.active,failed:!!s.error}};
+ const audit=await formatSnapshot(env),combined=audit?[...files.filter(f=>f.source==='reference'),...audit.files]:files;
+ return {formatCheckedAt:audit?.checkedAt||null,scan:buildProgress(combined,mapping?.rows||[],tracker?.rows||[],s.checkedAt,Date.now(),midp?.rows||[]),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,baselineSource:midp?.source||null,checking:{active:!!s.active,failed:!!s.error}};
 }
 export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken){
  const sql=env.SQL;init(sql);let s=await state(env),activeTask=null;const now=Date.now();if(s.leaseUntil>now)return {updating:true};
@@ -58,7 +60,7 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
      if(task.source==='reference'&&excludedReferenceFolder(name))continue;
      const next={source:task.source,folderId:item.id,path:folderPath(project,item.id),trail:[...task.trail,name]};
      sql.exec('INSERT OR IGNORE INTO progress_queue(generation,source,path,task) VALUES(?,?,?,?)',s.generation,task.source,next.path,JSON.stringify(next));
-    }else if(item.type==='items'&&(task.source==='reference'?/\.(pdf|dwg|dgn|dxf|rvt|ifc|nwc|nwd)$/i:/\.(rvt|dwg)$/i).test(name)){
+    }else if(item.type==='items'&&(task.source==='reference'?/\.(pdf|dwg|dgn|dxf|rvt|ifc|nwc|nwd|dwfx)$/i:/\.(rvt|dwg|ifc|nwc|nwd|dwfx)$/i).test(name)){
      const version=page.included?.find(v=>v.type==='versions'&&v.id===item.relationships?.tip?.data?.id);
      const f={id:item.id,name,source:task.source,folderId:task.folderId,folderPath:task.trail,version:version?.attributes?.versionNumber||null,updatedAt:version?.attributes?.lastModifiedTime||item.attributes?.lastModifiedTime||null};
      sql.exec('INSERT INTO progress_files(generation,source,id,body) VALUES(?,?,?,?) ON CONFLICT(generation,source,id) DO UPDATE SET body=excluded.body',s.generation,task.source,item.id,JSON.stringify(f));
@@ -76,3 +78,5 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
  }catch(e){s.active=false;s.error=e.message;s.retryGeneration=!!s.generation&&Date.now()-s.startedAt<12*3600000;s.lastAttempt=Date.now();s.lastFailure={at:Date.now(),message:e.message,status:e.status||null,detail:e.providerError||null,task:activeTask};s.nextAt=Math.max(Date.now()+300000,e.retryAt||0);throw e;}
  finally{s.leaseUntil=0;await save(env,s);}
 }
+
+export async function syncModelSources(env,manual=false){const s=await formatState(env);if(s.active||!s.published||!s.nextAt||s.nextAt<=Date.now())return syncFormats(env);return syncProgress(env,manual);}

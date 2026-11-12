@@ -14,7 +14,7 @@ test('MIDP contributes expected asset disciplines even when no files or tracker 
 test('reference crawl excludes Other Assets and native models distinguish infrastructure CAD',()=>{
  assert.equal(excludedReferenceFolder('Other Assets'),true);assert.equal(excludedReferenceFolder('Other_Assets'),true);assert.equal(excludedReferenceFolder('Island'),false);
  assert.equal(isProgressModel({name:'a.rvt'}),true);assert.equal(isProgressModel({name:'M1-FXX-SAP-XXX-05-BM015-BNM-XX-000001.dwg'}),true);
- assert.equal(isProgressModel({name:'drawing.dwg',folderPath:['Architecture']}),false);assert.equal(isProgressModel({name:'a.ifc'}),false);
+ assert.equal(isProgressModel({name:'drawing.dwg',folderPath:['Architecture']}),false);assert.equal(isProgressModel({name:'a.ifc'}),true);
 });
 test('seven-day warning uses strict elapsed time and never invents missing dates',()=>{
  const now=Date.parse('2026-11-12T12:00:00Z');assert.equal(updateState(now-7*86400000,now),'Updated this week');assert.equal(updateState(now-7*86400000-1,now),'Over 7 days');assert.equal(updateState(null,now),'Date unavailable');assert.equal(updateState(now+1,now),'Date unavailable');

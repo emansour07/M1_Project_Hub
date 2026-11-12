@@ -1,5 +1,6 @@
 import {read,utils} from 'xlsx';
 import {downloadWorkbook} from './sources.mjs';
+import {parseNamingRules} from './naming.mjs';
 const text=v=>String(v??'').trim();
 export function parseAssetRows(rows){
  const header=rows.findIndex(r=>r.some(c=>/proposed/i.test(text(c)))&&r.some(c=>/section|existing/i.test(text(c))));
@@ -66,12 +67,13 @@ export async function syncWorkbook(env,key){
   if(!rows.length)throw Error('No MIDP model requirements found.');
   const result={source:{...data.source,sheet:'Model sections; federation excluded'},rows};await env.BUCKET.put('m1/workbooks/midp',JSON.stringify(result));return result;
  }
- const book=read(data.bytes,{type:'array',sheets:[title],cellFormula:false,cellHTML:false,cellStyles:false,sheetRows:10000});
+ const book=read(data.bytes,{type:'array',sheets:key==='tidp'?[title,'Supporting Data']:[title],cellFormula:false,cellHTML:false,cellStyles:false,sheetRows:10000});
  const sheet=book.Sheets[title];if(!sheet)throw Error('Required workbook tab is missing.');
  // Read visibility separately: style parsing in the current tracker can suppress
  // cached model-name strings. Values must come from the unstyled read.
  const columns=key==='tracker'?read(data.bytes,{type:'array',sheets:[title],cellStyles:true,cellFormula:false,cellHTML:false,sheetRows:3}).Sheets[title]['!cols']:[];
  const raw=utils.sheet_to_json(sheet,{header:1,defval:null}),hidden=(columns||[]).flatMap((c,i)=>c?.hidden?[i]:[]),rows=key==='tidp'?parseAssetRows(raw):parseTrackerRows(raw,hidden);
  const result={source:{...data.source,sheet:title},rows};
+ if(key==='tidp')result.naming=parseNamingRules(utils.sheet_to_json(book.Sheets['Supporting Data'],{header:1,defval:null}));
  await env.BUCKET.put('m1/workbooks/'+key,JSON.stringify(result));return result;
 }

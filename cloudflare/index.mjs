@@ -1,8 +1,9 @@
+import {formatState} from '../format-audit.mjs';
 import {DurableObject} from 'cloudflare:workers';
 import {createHandler,stored,validateSnapshot} from '../worker.mjs';
 import {syncForma} from '../forma.mjs';
 import {saveBaseline} from '../models.mjs';
-import {syncProgress,progressSnapshot,progressStatus} from '../progress.mjs';
+import {syncModelSources,progressSnapshot,progressStatus} from '../progress.mjs';
 import {validBaseline} from '../model-core.mjs';
 import {SQLiteStore} from './store.mjs';
 import {checkSourceAccess} from '../sources.mjs';
@@ -38,7 +39,7 @@ export class M1State extends DurableObject{
   }
   const owner=await isOwner(request,secret);
   if(path==='/api/models/access'&&request.method==='GET')return owner?json({...await checkSourceAccess(env),progress:await (await env.BUCKET.get('m1/progress/state'))?.json()}):json({error:'Owner access required.'},403);
-  if(path==='/api/models/status'&&request.method==='GET')return owner?json(await progressStatus(env)):json({error:'Owner access required.'},403);
+  if(path==='/api/models/status'&&request.method==='GET')return owner?json({...await progressStatus(env),formatAudit:await formatState(env)}):json({error:'Owner access required.'},403);
   if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await workbookSnapshot(env,'tidp')});
   if(path==='/api/workbooks/sync'){
    if(!owner||request.method!=='POST'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);
@@ -64,7 +65,7 @@ export class M1State extends DurableObject{
   if(path==='/api/refresh'){
    if(request.method!=='POST'||![url.origin,env.FRONTEND_ORIGIN].includes(request.headers.get('Origin')))return json({error:'Request not accepted.'},403);
    // Sequential: both tasks share the encrypted Autodesk token. Max 40 provider reads plus token refresh.
-   const results=[];for(const task of [()=>env.REVIEWS_ACCESS_VERIFIED==='true'?syncForma(env,stored,validateSnapshot,true):Promise.resolve({skipped:true}),()=>syncProgress(env,true)]){try{results.push(await task());}catch{results.push({error:true});}}
+   const results=[];for(const task of [()=>env.REVIEWS_ACCESS_VERIFIED==='true'?syncForma(env,stored,validateSnapshot,true):Promise.resolve({skipped:true}),()=>syncModelSources(env,true)]){try{results.push(await task());}catch{results.push({error:true});}}
    if(results.every(r=>r.error))return json({error:'Unable to update right now.'},503);return json({updating:results.some(r=>r.updating),partialFailure:results.some(r=>r.error)});
   }
   if(path==='/admin'&&!owner)return redirect('/admin/login');
@@ -74,7 +75,7 @@ export class M1State extends DurableObject{
   const response=await app.fetch(new Request(new Request(url,request),{headers}),env);
   if(path==='/api/forma/callback'&&response.status===303){const h=new Headers(response.headers);if(h.get('Location')?.startsWith('/?forma='))h.set('Location','/admin'+h.get('Location').slice(1));return new Response(response.body,{status:303,headers:h});}return response;
  }
- async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncProgress(this.env).catch(()=>{});for(const key of ['tidp','tracker','midp']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
+ async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncModelSources(this.env).catch(()=>{});for(const key of ['tidp','tracker','midp']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
 export default {fetch:(request,env)=>state(env).fetch(request),scheduled:(event,env,ctx)=>ctx.waitUntil(state(env).tick())};

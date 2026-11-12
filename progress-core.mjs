@@ -1,3 +1,4 @@
+import {groupModels,modelStem} from './model-formats.mjs';
 import {assetFromFilename,resolveAsset,canonicalFilename,assetRowsForParcel} from './asset-codes.mjs';
 const disciplines={BM010:'Architecture',BM012:'Structure',GB001:'Earthworks',BM015:'Roads',BM018:'Mechanical',BM019:'Electrical',BM020:'Plumbing',BM024:'Fire fighting',BM023:'ELV',BM025:'BMS',BM032:'Landscape',BM017:'Drainage',BM036:'Mechanical',BM021:'Landscape',BM100:'General',BMXXX:'Civil'};
 export function fileDiscipline(file){
@@ -6,7 +7,7 @@ export function fileDiscipline(file){
  for(const [re,name] of [[/architect|\barc\b/,'Architecture'],[/structur|\bstr\b/,'Structure'],[/mechanic|\bmech\b/,'Mechanical'],[/electric|\bele\b/,'Electrical'],[/plumb/,'Plumbing'],[/fire.?fight/,'Fire fighting'],[/earthwork/,'Earthworks'],[/road/,'Roads'],[/landscap/,'Landscape'],[/drain|hydrolog/,'Drainage'],[/wet.?util/,'Wet utilities'],[/dry.?util/,'Dry utilities'],[/marine|subsea/,'Marine'],[/\belv\b/,'ELV'],[/\bbms\b/,'BMS']])if(re.test(path))return name;
  return parts[5]==='BM016'?'Utilities / marine':'Unclassified';
 }
-export function isProgressModel(file){return /\.rvt$/i.test(file.name)||(/\.dwg$/i.test(file.name)&&['Civil','Roads','Earthworks','Drainage','Wet utilities','Dry utilities','Marine','Utilities / marine'].includes(fileDiscipline(file)));}
+export function isProgressModel(file){return /\.(rvt|ifc|nwc|nwd|dwfx)$/i.test(file.name)||(/\.dwg$/i.test(file.name)&&(/(?:^|-)C3D(?:-|\.)/i.test(file.name)||['Civil','Roads','Earthworks','Drainage','Wet utilities','Dry utilities','Marine','Utilities / marine'].includes(fileDiscipline(file))));}
 export function updateState(value,now=Date.now()){
  const t=typeof value==='number'?value:Date.parse(value);if(!Number.isFinite(t)||t>now)return 'Date unavailable';
  return now-t>7*86400000?'Over 7 days':'Updated this week';
@@ -24,9 +25,12 @@ export function buildProgress(files,mapping,tracker,checkedAt,now=Date.now(),req
  const grouped=new Map(),byName=new Map();for(const r of tracker){const key=canonicalFilename(r.name,mapping);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(r);}
  const names=new Map(mapping.map(r=>[r.proposed,r.name])),progress=[],unmapped={reference:0,progress:0,scope:0},matched=new Set(),seenModels=new Set();
  const group=(asset,discipline)=>{const k=asset+'|'+discipline;if(!grouped.has(k))grouped.set(k,{asset,assetName:names.get(asset)||asset,discipline,reference:0,models:0,drawings:0,progressed:0,expected:0});return grouped.get(k);};
- for(const f of files){
+ const references=files.filter(f=>f.source==='reference'),developed=groupModels(files.filter(f=>f.source!=='reference'),isProgressModel);
+ const referenceSeen=new Set();
+ for(const f of [...references,...developed]){
   const a=fileAsset(f,mapping),d=fileDiscipline(f);if(f.source==='reference'){
-   if(!a.code){unmapped.reference++;continue;}const g=group(a.code,d);g.reference++;/\.(rvt|ifc|nwc|nwd)$/i.test(f.name)?g.models++:g.drawings++;continue;
+   const model=isProgressModel(f),key=modelStem(f.name);if(model&&referenceSeen.has(key))continue;if(model)referenceSeen.add(key);
+   if(!a.code){unmapped.reference++;continue;}const g=group(a.code,d);g.reference++;model?g.models++:g.drawings++;continue;
   }
   if(!isProgressModel(f)||seenModels.has(f.id))continue;seenModels.add(f.id);if(a.code)group(a.code,d).progressed++;else unmapped.progress++;
   const matches=byName.get(canonicalFilename(f.name,mapping))||[],r=matches.length===1?matches[0]:null;
