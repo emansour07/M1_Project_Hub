@@ -67,6 +67,7 @@ export function scopedReview(review,policy){const files=(review.files||[]).map(f
 export function scopedSnapshot(snapshot,policy){return snapshot?{...snapshot,reviews:(snapshot.reviews||[]).map(r=>scopedReview(r,policy)).filter(Boolean),voidCount:0,uniqueCount:undefined}:snapshot;}
 export async function pruneScopeCache(env,limit=500){
  const policy=await getScope(env);if(!policy)return {pending:true};
+ env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/models/%'");
  let checked=0,removed=0;
  for(const table of ['progress_files','format_files']){
   if(!env.SQL.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?",table).toArray().length)continue;

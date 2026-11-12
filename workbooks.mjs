@@ -67,7 +67,7 @@ async function saveLedger(env,source,entries){
  const scope=await getScope(env);if(!scope)throw Error('Read the scope register first.');entries=entries.map(r=>scopedFile(r,scope)).filter(Boolean);
  const generation=String(source.version)+'-'+crypto.randomUUID(),count=Math.ceil(entries.length/500);
  for(let i=0;i<count;i++)await env.BUCKET.put('m1/midp/'+generation+'/'+i,JSON.stringify(entries.slice(i*500,(i+1)*500)));
- const meta={source,generation,chunks:count,total:entries.length,dated:entries.filter(r=>r.latestIssueDate).length,scopeVersion:scope.revision};await env.BUCKET.put('m1/midp/latest',JSON.stringify(meta));if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/midp/%' AND key<>? AND key NOT LIKE ?",'m1/midp/latest','m1/midp/'+generation+'/%');return meta;
+ const meta={source,generation,chunks:count,total:entries.length,dated:entries.filter(r=>r.latestIssueDate).length,scopeVersion:scope.revision};await env.BUCKET.put('m1/midp/latest',JSON.stringify(meta));if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/midp/%' AND key<>? AND key<>'m1/midp/refresh-lock' AND key NOT LIKE ?",'m1/midp/latest','m1/midp/'+generation+'/%');return meta;
 }
 export async function midpSnapshot(env){const meta=await (await env.BUCKET.get('m1/midp/latest'))?.json();if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await env.BUCKET.get('m1/midp/'+meta.generation+'/'+i);if(!chunk)throw Error('MIDP cache is incomplete.');entries.push(...await chunk.json());}const scope=await getScope(env),kept=entries.map(r=>scopedFile(r,scope)).filter(Boolean);return {source:meta.source,total:kept.length,dated:kept.filter(r=>r.latestIssueDate).length,entries:kept};}
 export async function exportMidp(env,start,end){

@@ -18,7 +18,7 @@ export async function syncFormats(env,read=getAPS,tokenProvider=accessToken,maxR
   const token=await tokenProvider(env),policy=await getScope(env);
   for(let n=0;n<Math.min(36,Math.max(3,maxReads));n+=3){
    const batch=sql.exec('SELECT source,path,task FROM format_queue WHERE generation=? AND done=0 LIMIT 3',s.generation).toArray();if(!batch.length)break;
-   const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);return {task,page:await read(task.path,token)};}));let failure=null;
+   const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);if(task.trail.some((name,i)=>!visitScopeFolder(name,task.trail.slice(0,i),policy)))return {task,page:{data:[]}};return {task,page:await read(task.path,token)};}));let failure=null;
    for(const result of results){if(result.status==='rejected'){failure||=result.reason;continue;}const {task,page}=result.value;if(!Array.isArray(page.data))throw Error('Incomplete folder response.');
    for(const item of page.data){const name=item.attributes?.displayName||item.attributes?.name;if(!item.id||!name)throw Error('Incomplete file metadata.');
     if(item.type==='folders'){if(!visitScopeFolder(name,task.trail,policy))continue;const child={source:task.source,folderId:item.id,path:folderPath('b.'+env.ACC_PROJECT_ID.replace(/^b\./,''),item.id),trail:[...task.trail,name]};sql.exec('INSERT OR IGNORE INTO format_queue(generation,source,path,task) VALUES(?,?,?,?)',s.generation,task.source,child.path,JSON.stringify(child));}

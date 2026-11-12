@@ -45,7 +45,7 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
   while(count<18){
    const batch=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT ?',s.generation,Math.min(3,18-count)).toArray();if(!batch.length)break;
    // Read independent folders in groups of three; persist their results sequentially.
-   const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);try{return {task,page:await readApi(task.path,token)};}catch(e){e.folderTask=task;throw e;}}));count+=batch.length;
+   const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);try{if(task.trail.some((name,i)=>!visitScopeFolder(name,task.trail.slice(0,i),policy)))return {task,page:{data:[]}};return {task,page:await readApi(task.path,token)};}catch(e){e.folderTask=task;throw e;}}));count+=batch.length;
    let failure=null;
    for(const result of results){
    if(result.status==='rejected'){failure||=result.reason;continue;}
