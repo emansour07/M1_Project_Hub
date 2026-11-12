@@ -16,7 +16,7 @@ Separate M1 dashboard prepared for GitHub Pages and a Cloudflare Worker. It does
 - Public team dashboard: https://emansour07.github.io/M1_Project_Hub/
 - Separate backend: https://m1-project-api.eslam-mansour.workers.dev
 - Owner controls require a private owner code. Team viewing does not require sign-in.
-- Autodesk authorisation and the baseline mapping are pending. Scheduled synchronisation remains disabled until setup is complete.
+- The dedicated M1 APS application is configured and owner sign-in is connected. M1 ACC hub integration approval and the baseline mapping are pending. Scheduled synchronisation remains disabled until setup is complete.
 
 ## Build and validate
 
@@ -50,5 +50,4 @@ The GitHub Actions workflow builds and publishes Pages from `main`. Set Pages so
 
 Autodesk [Data Management](https://aps.autodesk.com/data-management-api), [data browsing tutorial](https://get-started.aps.autodesk.com/tutorials/hubs-browser/data), and [folder contents endpoint](https://aps.autodesk.com/en/docs/data/v2/reference/http/projects-project_id-folders-folder_id-contents-GET/). Review synchronisation and owner-code authentication are adapted from the existing SB05 implementation.
 
-Status: Cloudflare backend deployed. The frontend is prepared for GitHub Pages. Autodesk connection and baseline matching remain pending; empty states are intentional until verified.
-
+Status: GitHub Pages and the separate Cloudflare backend are live. Owner-code setup and Autodesk sign-in are verified. Hub integration approval and model-baseline matching remain pending; empty states are intentional until verified.
