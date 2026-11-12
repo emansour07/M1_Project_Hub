@@ -13,6 +13,7 @@ export function updateState(value,now=Date.now()){
  return now-t>7*86400000?'Over 7 days':'Updated this week';
 }
 export function fileAsset(file,mapping){
+ if(file.scopeAsset)return {code:file.scopeAsset,candidates:[file.scopeAsset]};
  const result=assetFromFilename(file.name,mapping),scoped=assetRowsForParcel(mapping,String(file.name||'').split('-')[1]);
  // Only whole code tokens in folder names can help. Never match code substrings.
  const tokens=(file.folderPath||[]).flatMap(p=>String(p).toUpperCase().split(/[^A-Z0-9]+/)).filter(Boolean);
@@ -21,9 +22,10 @@ export function fileAsset(file,mapping){
  if(candidates.length===1&&(!result.candidates.length||result.candidates.includes(candidates[0])))return {code:candidates[0],candidates};
  return result;
 }
+function trackerKey(file,mapping){const parts=canonicalFilename(file.name,mapping).split('-');if(file.scopeAsset&&parts[0]==='M1'){parts[1]='FXX';parts[3]=file.scopeAsset;}return parts.join('-');}
 export function buildProgress(files,mapping,tracker,checkedAt,now=Date.now(),requirements=[]){
- const grouped=new Map(),byName=new Map();for(const r of tracker){const key=canonicalFilename(r.name,mapping);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(r);}
- const names=new Map(mapping.map(r=>[r.proposed,r.name])),progress=[],unmapped={reference:0,progress:0,scope:0},matched=new Set(),seenModels=new Set();
+ const grouped=new Map(),byName=new Map();for(const r of tracker){const key=trackerKey(r,mapping);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(r);}
+ const names=new Map(mapping.map(r=>[r.proposed,r.name])),progress=[],unmapped={reference:0,progress:0,scope:0},matched=new Set(),seenModels=new Set();for(const f of [...files,...tracker,...requirements])if(f.scopeAsset)names.set(f.scopeAsset,f.scopeName);
  const group=(asset,discipline)=>{const k=asset+'|'+discipline;if(!grouped.has(k))grouped.set(k,{asset,assetName:names.get(asset)||asset,discipline,reference:0,models:0,drawings:0,progressed:0,expected:0});return grouped.get(k);};
  const references=files.filter(f=>f.source==='reference'),developed=groupModels(files.filter(f=>f.source!=='reference'),isProgressModel);
  const referenceSeen=new Set();
@@ -33,12 +35,12 @@ export function buildProgress(files,mapping,tracker,checkedAt,now=Date.now(),req
    if(!a.code){unmapped.reference++;continue;}const g=group(a.code,d);g.reference++;model?g.models++:g.drawings++;continue;
   }
   if(!isProgressModel(f)||seenModels.has(f.id))continue;seenModels.add(f.id);if(a.code)group(a.code,d).progressed++;else unmapped.progress++;
-  const matches=byName.get(canonicalFilename(f.name,mapping))||[],r=matches.length===1?matches[0]:null;
-  if(matches.length)matched.add(canonicalFilename(f.name,mapping));
+  const matches=byName.get(trackerKey(f,mapping))||[],r=matches.length===1?matches[0]:null;
+  if(matches.length)matched.add(trackerKey(f,mapping));
   progress.push({...f,asset:a.code,assetName:names.get(a.code)||null,candidates:a.candidates,mappingConflict:!!a.conflict,discipline:d,log:r?.log??null,loi:r?.loi??null,trackerRow:r?.row??null,updateState:updateState(f.updatedAt,now)});
  }
- const outstanding=tracker.filter(r=>!matched.has(canonicalFilename(r.name,mapping))).map(r=>({...r,asset:assetFromFilename(r.name,mapping).code,discipline:fileDiscipline(r)}));
- for(const r of tracker){const a=assetFromFilename(r.name,mapping);if(a.code)group(a.code,fileDiscipline(r));}
- for(const r of requirements){const a=assetFromFilename(r.name,mapping);if(a.code)group(a.code,fileDiscipline(r)).expected++;else unmapped.scope++;}
+ const outstanding=tracker.filter(r=>!matched.has(trackerKey(r,mapping))).map(r=>({...r,asset:fileAsset(r,mapping).code,discipline:fileDiscipline(r)}));
+ for(const r of tracker){const a=fileAsset(r,mapping);if(a.code)group(a.code,fileDiscipline(r));}
+ for(const r of requirements){const a=fileAsset(r,mapping);if(a.code)group(a.code,fileDiscipline(r)).expected++;else unmapped.scope++;}
  return {complete:true,checkedAt,availability:[...grouped.values()].sort((a,b)=>a.asset.localeCompare(b.asset)||a.discipline.localeCompare(b.discipline)),files:progress,unmapped,outstanding,trackerCount:tracker.length};
 }

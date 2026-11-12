@@ -1,3 +1,4 @@
+import {getScope,scopedReview} from './scope.mjs';
 import {serviceAccessToken,serviceConfigured} from './ssa.mjs';
 // Autodesk Reviews integration. All provider calls and credentials remain server-side.
 const project=env=>{const id=String(env.ACC_PROJECT_ID||'').replace(/^b\./,'');if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error('Configure the M1 project first.');return id;};
@@ -116,13 +117,13 @@ async function syncFormaBatched(env,readSnapshot,validate,manual){
    if(!job.pending){job.pending={workflow:await getAPS(path+'/workflow',token),files:[]};reads++;continue;}
    const data=await getAPS(path+'/versions?limit=50&offset='+job.pending.files.length,token);reads++;
    if(appendPage(job.pending.files,data,10000)){
-    job.mapped.push(mapFormaReview(review,job.pending.workflow,job.pending.files));job.index++;job.pending=null;
+    const scoped=scopedReview(mapFormaReview(review,job.pending.workflow,job.pending.files),await getScope(env));if(scoped)job.mapped.push(scoped);job.raw[job.index]=null;job.index++;job.pending=null;
    }
   }
   if(!job.listDone||job.index<job.raw.length){await putF(env,'job',job);return {updating:true,skipped:false,retryAfterMs:800};}
   const before=await readSnapshot(env);
   if(before.etag!==job.baseEtag)throw Error('The shared report changed during synchronization. Retry.');
-  if(!job.mapped.length&&before.data.current.reviews.length)throw Error('Autodesk returned no non-void reviews. The previous report is retained.');
+  if(!job.raw.length&&before.data.current.reviews.length)throw Error('Autodesk returned no reviews. The previous report is retained.');
   const now=Date.now(),current=validate({schema:1,name:'Autodesk Forma · M1 Reviews',project:project(env),source:'forma',reportAt:now,loadedAt:now,reviews:job.mapped,voidCount:job.voidCount,uniqueCount:job.raw.length,warnings:[]});
   const same=JSON.stringify(current.reviews)===JSON.stringify(before.data.current.reviews);
   const value={revision:before.data.revision+1,current,previous:same?before.data.previous:before.data.current,updatedAt:now};

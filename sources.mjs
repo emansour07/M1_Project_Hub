@@ -1,5 +1,6 @@
 import {accessToken,getAPS} from './forma.mjs';
 export const sources={
+ scope:'urn:adsk.wipemea:dm.lineage:sIrhtKWeRjCdGN3fs-vrpg',
  reference:'urn:adsk.wipemea:fs.folder:co.6tClIOPzQGyEeWnblrUTng',
  progress1:'urn:adsk.wipemea:fs.folder:co.VehAR6QsSlSwFkACDHnCtQ',
  progress2:'urn:adsk.wipemea:fs.folder:co.6wa3eF4wR-eI0UzMqkyB7g',
@@ -19,7 +20,7 @@ export async function checkSourceAccess(env){
  return {sources:result};
 }
 export async function downloadWorkbook(env,key){
- if(!['tracker','midp','tidp'].includes(key))throw Error('Unknown source.');
+ if(!['tracker','midp','tidp','scope'].includes(key))throw Error('Unknown source.');
  const token=await accessToken(env),p=encodeURIComponent('b.'+env.ACC_PROJECT_ID.replace(/^b\./,''));
  const tip=await getAPS(`/data/v1/projects/${p}/items/${encodeURIComponent(sources[key])}/tip`,token);
  const v=tip.data,urn=v?.relationships?.storage?.data?.id;

@@ -1,3 +1,4 @@
+import {getScope,scopedSnapshot} from './scope.mjs';
 import {formaRoutes} from './forma.mjs';
 export {stored,validateSnapshot};
 const KEY='m1/shared-snapshot-v2.json';
@@ -22,14 +23,14 @@ export const handler={async fetch(request,env){
  if(url.pathname==='/api/snapshot'){
   if(!env.BUCKET)return json({error:'Shared storage is unavailable. No report has been changed.'},503);
   try{
-   if(request.method==='GET'){const {data}=await stored(env),tag='"'+data.revision+'"';if(request.headers.get('If-None-Match')===tag)return new Response(null,{status:304,headers:{ETag:tag,'Cache-Control':'no-store'}});return json(data,200,{ETag:tag});}
+   if(request.method==='GET'){const {data}=await stored(env),tag='"'+data.revision+'"';if(request.headers.get('If-None-Match')===tag)return new Response(null,{status:304,headers:{ETag:tag,'Cache-Control':'no-store'}});const scope=await getScope(env);return json({...data,current:scopedSnapshot(data.current,scope),previous:null},200,{ETag:tag});}
    if(request.method!=='PUT')return json({error:'Method not allowed.'},405);
    if(!canUpload)return json({error:'Only the dashboard owner can publish a new log.'},403);
    if(request.headers.get('Origin')!==url.origin)return json({error:'Invalid request origin.'},403);
    if(!request.headers.get('Content-Type')?.startsWith('application/json'))return json({error:'Expected a validated JSON snapshot.'},415);
    const max=12*1024*1024;if(Number(request.headers.get('Content-Length')||0)>max)return json({error:'Report is too large.'},413);
    const reader=request.body?.getReader();if(!reader)return json({error:'Empty report.'},400);let size=0;const chunks=[];while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>max){await reader.cancel();return json({error:'Report is too large.'},413);}chunks.push(value);}const bytes=new Uint8Array(size);let pos=0;for(const chunk of chunks){bytes.set(chunk,pos);pos+=chunk.length;}
-   const input=JSON.parse(new TextDecoder().decode(bytes)),next=validateSnapshot(input.snapshot),old=await stored(env);
+   const input=JSON.parse(new TextDecoder().decode(bytes)),next=validateSnapshot(scopedSnapshot(input.snapshot,await getScope(env))),old=await stored(env);
    if(input.expectedRevision!==old.data.revision)return json({error:'A newer update was published. Refresh and load your log again.'},409);
    if(next.reportAt<old.data.current.reportAt)return json({error:'This report is older than the shared snapshot.'},409);
    const same=JSON.stringify(next.reviews)===JSON.stringify(old.data.current.reviews)&&next.voidCount===old.data.current.voidCount;

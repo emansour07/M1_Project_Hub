@@ -12,12 +12,13 @@ export function checkName(name,mapping,rules){
  if(parts.length!==9&&parts.length!==10){add('Structure','Use '+rules.pattern+'.');return {state:'warning',issues,suggestion:null};}
  for(let i=0;i<parts.length;i++)if(parts[i]!==parts[i].toUpperCase()){fixed[i]=parts[i].toUpperCase();add('Case','Use uppercase naming codes.',fixed[i]);}
  if(fixed[0]!=='M1'){fixed[0]='M1';add('Project','Project code must be M1.','M1');}
+ if(fixed[1]!=='FXX'){fixed[1]='FXX';add('Parcel','The updated M1 convention requires FXX as the second segment.','FXX');}
  for(const field of rules.fields)if(!field.values.some(v=>v.code===fixed[field.index]))add(field.label,'“'+fixed[field.index]+'” is not in the TIDP '+field.label.toLowerCase()+' picklist.');
- const asset=fixed[3],parcel=fixed[1],numeric=/^\d{2,3}$/.test(parcel),scoped=numeric?mapping.filter(r=>Number(String(r.section||'').replace('.',''))===Number(parcel)):mapping;
+ const asset=fixed[3],parcel=parts[1].toUpperCase(),numeric=/^\d{2,3}$/.test(parcel),scoped=numeric?mapping.filter(r=>Number(String(r.section||'').replace('.',''))===Number(parcel)):mapping;
  // Already-proposed codes take precedence over legacy codes with the same text.
  if(!['XXX','YYY','ZZZ'].includes(asset)&&!scoped.some(r=>r.proposed===asset)){
   const candidates=[...new Set(scoped.filter(r=>r.existing===asset).map(r=>r.proposed))];
-  if(candidates.length===1){fixed[3]=candidates[0];add('Asset','Replace existing asset code '+asset+' with proposed code '+candidates[0]+'.',candidates[0]);}
+  if(candidates.length===1&&!scoped.some(r=>r.mappingPending&&r.existing===asset)&&!(parcel==='FXX'&&scoped.some(r=>r.ambiguous?.includes(asset)))){fixed[3]=candidates[0];add('Asset','Replace existing asset code '+asset+' with proposed code '+candidates[0]+'.',candidates[0]);}
   else add('Asset',candidates.length?'Asset '+asset+' has multiple proposed codes: '+candidates.join(', ')+'. Confirm the section.':'Asset '+asset+' is not a proposed code for this parcel in the TIDP.');
  }
  if(!/^\d{6}$/.test(fixed[8]))add('Number','Document number must have six digits, as used in the TIDP filename.');
