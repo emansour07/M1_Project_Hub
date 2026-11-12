@@ -10,9 +10,11 @@ test('pagination accepts equivalent encoded folder URNs but rejects different fo
 function environment(){const db=new DatabaseSync(':memory:'),objects=new Map();const env={ACC_PROJECT_ID:'test',SQL:{exec(query,...args){const stmt=db.prepare(query);const rows=stmt.columns().length?stmt.all(...args):(stmt.run(...args),[]);return {toArray:()=>rows};}},BUCKET:{async get(key){return objects.has(key)?{json:async()=>JSON.parse(objects.get(key))}:null;},async put(key,value){objects.set(key,value);return {etag:'x'};}}};objects.set('m1/workbooks/tidp',JSON.stringify({rows:[{existing:'A48',proposed:'CRA'}]}));objects.set('m1/workbooks/tracker',JSON.stringify({rows:[]}));return {env,objects,db};}
 const folder=(id,name)=>({id,type:'folders',attributes:{name}});
 test('large scans resume across bounded invocations and publish only after completion',async()=>{
- const {env,db}=environment();let calls=0;
+ const {env,objects,db}=environment();let calls=0;
  const read=async path=>{calls++;const id=decodeURIComponent(path.split('/folders/')[1].split('/contents')[0]);return {data:id===sources.reference?[folder('island','Island'),folder('mainland','Mainland'),folder('subsea','Subsea'),folder('excluded','Other Assets')]:id===sources.progress1?Array.from({length:25},(_,i)=>folder('p'+i,'models'+i)):[]};};
  assert.equal((await syncProgress(env,true,read,async()=>'test')).updating,true);assert.equal(calls,18);assert.equal((await progressSnapshot(env)).scan,null);
+ assert.equal((await syncProgress(env,true,read,async()=>'test')).updating,true);assert.equal(calls,18);
+ const s=JSON.parse(objects.get('m1/progress/state'));s.batchNotBefore=0;objects.set('m1/progress/state',JSON.stringify(s));
  assert.equal((await syncProgress(env,true,read,async()=>'test')).ok,true);assert.equal((await progressSnapshot(env)).scan.complete,true);assert.equal(db.prepare("SELECT COUNT(*) n FROM progress_queue WHERE task LIKE '%excluded%'").get().n,0);db.close();
 });
 test('permission failure retains the last complete generation',async()=>{
@@ -26,4 +28,10 @@ test('retry resumes staged folders instead of discarding completed work',async()
  await assert.rejects(()=>syncProgress(env,true,read,async()=>'test'));
  const s=JSON.parse(objects.get('m1/progress/state'));assert.ok(s.retryGeneration);s.nextAt=0;s.lastAttempt=0;objects.set('m1/progress/state',JSON.stringify(s));
  assert.equal((await syncProgress(env,true,read,async()=>'test')).ok,true);assert.equal(rootReads,1);assert.equal((await progressSnapshot(env)).scan.complete,true);db.close();
+});
+test('manual refresh cannot bypass provider rate-limit backoff',async()=>{
+ const {env,objects,db}=environment();let calls=0;const retryAt=Date.now()+900000;
+ await assert.rejects(()=>syncProgress(env,true,async()=>{calls++;const e=Error('Rate limited');e.status=429;e.retryAt=retryAt;throw e;},async()=>'test'));
+ const s=JSON.parse(objects.get('m1/progress/state'));assert.ok(s.nextAt>=retryAt);s.lastAttempt=0;objects.set('m1/progress/state',JSON.stringify(s));const before=calls;
+ assert.ok((await syncProgress(env,true,async()=>{calls++;return {data:[]};},async()=>'test')).retryAfterMs>0);assert.equal(calls,before);db.close();
 });

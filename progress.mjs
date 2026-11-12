@@ -23,6 +23,8 @@ export async function progressSnapshot(env){
 }
 export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken){
  const sql=env.SQL;init(sql);let s=await state(env),activeTask=null;const now=Date.now();if(s.leaseUntil>now)return {updating:true};
+ if(s.active&&s.batchNotBefore>now)return {updating:true,retryAfterMs:s.batchNotBefore-now};
+ if(s.lastFailure?.status===429&&s.nextAt>now)return {updating:true,retryAfterMs:s.nextAt-now};
  if(!s.active&&s.nextAt>now&&(!manual||s.lastAttempt+60000>now))return {skipped:true};
  s.leaseUntil=now+120000;await save(env,s);
  try{
@@ -38,8 +40,13 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
   if(now-s.startedAt>12*3600000)throw Error('Folder check expired.');
   const token=await getToken(env);let count=0;
   while(count<18){
-   const row=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT 1',s.generation).toArray()[0];if(!row)break;
-   const task=JSON.parse(row.task);activeTask=task;const page=await readApi(task.path,token);count++;
+   const batch=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT ?',s.generation,Math.min(3,18-count)).toArray();if(!batch.length)break;
+   // Read independent folders in groups of three; persist their results sequentially.
+   const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);try{return {task,page:await readApi(task.path,token)};}catch(e){e.folderTask=task;throw e;}}));count+=batch.length;
+   let failure=null;
+   for(const result of results){
+   if(result.status==='rejected'){failure||=result.reason;continue;}
+   const {task,page}=result.value;activeTask=task;
    if(!Array.isArray(page.data))throw Error('Incomplete folder contents.');
    if(task.source==='reference'&&task.folderId===sources.reference&&!page.links?.next){
     const names=new Set(page.data.filter(x=>x.type==='folders').map(x=>String(x.attributes?.displayName||x.attributes?.name).toLowerCase()));
@@ -60,9 +67,12 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
    const next=nextPath(page.links?.next,task.path);
    if(next){const exists=sql.exec('SELECT done FROM progress_queue WHERE generation=? AND source=? AND path=?',s.generation,task.source,next).toArray()[0];if(exists)throw Error('Repeated folder page.');sql.exec('INSERT INTO progress_queue(generation,source,path,task) VALUES(?,?,?,?)',s.generation,task.source,next,JSON.stringify({...task,path:next}));}
    sql.exec('UPDATE progress_queue SET done=1 WHERE generation=? AND source=? AND path=?',s.generation,task.source,task.path);s.pages++;
+   }
+   if(failure){activeTask=failure.folderTask;throw failure;}
   }
   if(!sql.exec('SELECT 1 FROM progress_queue WHERE generation=? AND done=0 LIMIT 1',s.generation).toArray().length){s.published=s.generation;s.checkedAt=Date.now();s.active=false;s.nextAt=Date.now()+300000;}
-  return {updating:s.active,ok:!s.active};
- }catch(e){s.active=false;s.error=e.message;s.retryGeneration=!!s.generation&&Date.now()-s.startedAt<12*3600000;s.lastAttempt=Date.now();s.lastFailure={at:Date.now(),message:e.message,status:e.status||null,detail:e.providerError||null,task:activeTask};s.nextAt=Date.now()+300000;throw e;}
+  s.batchNotBefore=Date.now()+10000;
+  return {updating:s.active,ok:!s.active,retryAfterMs:s.active?10000:0};
+ }catch(e){s.active=false;s.error=e.message;s.retryGeneration=!!s.generation&&Date.now()-s.startedAt<12*3600000;s.lastAttempt=Date.now();s.lastFailure={at:Date.now(),message:e.message,status:e.status||null,detail:e.providerError||null,task:activeTask};s.nextAt=Math.max(Date.now()+300000,e.retryAt||0);throw e;}
  finally{s.leaseUntil=0;await save(env,s);}
 }

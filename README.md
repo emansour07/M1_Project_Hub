@@ -26,7 +26,7 @@ Viewers need no sign-in. Owner-code access protects setup, workbook refresh and 
 
 Deployment gates in wrangler.jsonc: FORMA_SYNC_ENABLED enables scheduled updates only after source access is verified. REVIEWS_ACCESS_VERIFIED separately gates review synchronization; an empty list from a restricted member must not be presented as all project reviews.
 
-Each scheduled tick uses at most 20 review reads, 18 folder reads and one workbook download (3 provider requests), plus token renewal. Workbooks refresh every 15 minutes; folder scans restart after five minutes and resume across ticks. Manual refresh is throttled. Cloudflare's free-plan limits still apply.
+Each scheduled tick uses at most 20 review reads, 18 folder reads and one workbook download (3 provider requests), plus token renewal. Workbooks refresh every 15 minutes; folder scans restart after five minutes and resume across ticks. Manual folder batches are separated by at least ten seconds and use no more than three concurrent reads. Autodesk rate-limit responses pause the scan for at least five minutes, or its longer Retry-After interval; saved work resumes afterward. Cloudflare's free-plan limits still apply.
 
 ## Build and validation
 
