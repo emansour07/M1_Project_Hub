@@ -18,8 +18,8 @@ export function excludedReferenceFolder(name){return /^(?:\d+[._\s-]*)?other[ _-
 export async function progressSnapshot(env){
  const s=await state(env);if(!s.published)return {scan:null,checking:{active:!!s.active,failed:!!s.error}};
  init(env.SQL);const files=env.SQL.exec('SELECT body FROM progress_files WHERE generation=?',s.published).toArray().map(r=>JSON.parse(r.body));
- const mapping=await workbookSnapshot(env,'tidp'),tracker=await workbookSnapshot(env,'tracker');
- return {scan:buildProgress(files,mapping?.rows||[],tracker?.rows||[],s.checkedAt),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,checking:{active:!!s.active,failed:!!s.error}};
+ const mapping=await workbookSnapshot(env,'tidp'),tracker=await workbookSnapshot(env,'tracker'),midp=await workbookSnapshot(env,'midp');
+ return {scan:buildProgress(files,mapping?.rows||[],tracker?.rows||[],s.checkedAt,Date.now(),midp?.rows||[]),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,baselineSource:midp?.source||null,checking:{active:!!s.active,failed:!!s.error}};
 }
 export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken){
  const sql=env.SQL;init(sql);let s=await state(env),activeTask=null;const now=Date.now();if(s.leaseUntil>now)return {updating:true};

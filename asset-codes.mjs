@@ -17,6 +17,6 @@ export function assetFromFilename(name,rows,namespace='either',parcel=''){
 }
 export function canonicalFilename(name,rows){
  const parts=String(name||'').trim().toUpperCase().replace(/\.[^.]+$/,'').replace(/-R\d+$/,'').split('-');
- if(parts[0]==='M1'&&parts.length>=6){const asset=assetFromFilename(parts.join('-'),rows);if(asset.code)parts[3]=asset.code;}
+ if(parts[0]==='M1'&&parts.length>=6){const asset=assetFromFilename(parts.join('-'),rows);if(asset.code){parts[3]=asset.code;const sections=[...new Set(rows.filter(r=>r.proposed===asset.code&&r.section).map(r=>r.section))];if(parts[1]==='FXX'&&sections.length===1)parts[1]=String(Number(sections[0].replace('.','')));}}
  return parts.join('-');
 }

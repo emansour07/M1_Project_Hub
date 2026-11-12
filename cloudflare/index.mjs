@@ -42,7 +42,7 @@ export class M1State extends DurableObject{
   if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await workbookSnapshot(env,'tidp')});
   if(path==='/api/workbooks/sync'){
    if(!owner||request.method!=='POST'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);
-   const result=[];for(const key of ['tidp','tracker']){try{const data=await syncWorkbook(env,key);result.push({source:key,ok:true,rows:data.rows.length});}catch(e){result.push({source:key,ok:false,error:e.message});}}
+   const result=[];for(const key of ['tidp','tracker','midp']){try{const data=await syncWorkbook(env,key);result.push({source:key,ok:true,rows:data.rows.length});}catch(e){result.push({source:key,ok:false,error:e.message});}}
    return json({results:result});
   }
   if(path==='/admin/code'){
@@ -74,7 +74,7 @@ export class M1State extends DurableObject{
   const response=await app.fetch(new Request(new Request(url,request),{headers}),env);
   if(path==='/api/forma/callback'&&response.status===303){const h=new Headers(response.headers);if(h.get('Location')?.startsWith('/?forma='))h.set('Location','/admin'+h.get('Location').slice(1));return new Response(response.body,{status:303,headers:h});}return response;
  }
- async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncProgress(this.env).catch(()=>{});for(const key of ['tidp','tracker']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
+ async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncProgress(this.env).catch(()=>{});for(const key of ['tidp','tracker','midp']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
 export default {fetch:(request,env)=>state(env).fetch(request),scheduled:(event,env,ctx)=>ctx.waitUntil(state(env).tick())};

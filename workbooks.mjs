@@ -24,10 +24,12 @@ export function percentage(value){
  const result=s.includes('%')?n:n<=1?n*100:n;
  return result<=100?Math.round(result*10)/10:null;
 }
-export function parseTrackerRows(rows){
+export function parseTrackerRows(rows,hiddenColumns=[]){
  const header=rows.findIndex(r=>r.some(c=>/^LOG\s*%$/i.test(text(c)))&&r.some(c=>/^LOI\s*%$/i.test(text(c))));
  if(header<0)throw Error('LOG and LOI columns were not found.');
- const h=rows[header].map(text),name=h.findIndex(c=>/^name$/i.test(c)),log=h.findIndex(c=>/^LOG\s*%$/i.test(c)),loi=h.findIndex(c=>/^LOI\s*%$/i.test(c)),desc=h.findIndex(c=>/^description$/i.test(c)),parcel=h.findIndex(c=>/^parcel$/i.test(c));
+ const h=rows[header].map(text),visible=re=>h.flatMap((c,i)=>re.test(c)&&!hiddenColumns.includes(i)?[i]:[]),logs=visible(/^LOG\s*%$/i),lois=visible(/^LOI\s*%$/i);
+ if(logs.length!==1||lois.length!==1)throw Error('The tracker must have one visible LOG and LOI column.');
+ const name=h.findIndex(c=>/^name$/i.test(c)),log=logs[0],loi=lois[0],desc=h.findIndex(c=>/^description$/i.test(c)),parcel=h.findIndex(c=>/^parcel$/i.test(c));
  if(name<0)throw Error('Tracker model name column was not found.');
  const result=[];let group='';
  for(let i=header+1;i<rows.length;i++){
@@ -37,13 +39,39 @@ export function parseTrackerRows(rows){
  }
  if(!result.length)throw Error('No model tracker rows found.');return result;
 }
+export function parseMidpRows(rows,sheet){
+ const formats=rows.find(r=>r.some(c=>/^\.rvt$/i.test(text(c)))&&r.some(c=>/^\.dwg$/i.test(text(c))));
+ if(!formats)return [];
+ const modelColumns=formats.flatMap((c,i)=>/^\.(rvt|nwc|nwd|ifc|dwg)$/i.test(text(c))?[i]:[]);
+ const result=[];let inModels=false,discipline='';
+ for(let i=0;i<rows.length;i++){
+  const r=rows[i],name=text(r[0]);
+  if(/^DISCIPLINE:/i.test(name)){discipline=name.replace(/^DISCIPLINE:\s*/i,'');inModels=false;}
+  if(/^BIM Models?$/i.test(name))inModels=true;
+  if(/^DRAWINGS/i.test(name))inModels=false;
+  if(inModels&&/^M1-/i.test(name)&&modelColumns.some(c=>/^yes$/i.test(text(r[c]))))result.push({name,description:text(r[1]),disciplineCode:discipline,folderPath:[sheet,discipline,text(r[1])],sheet,row:i+1});
+ }
+ return result;
+}
 export async function workbookSnapshot(env,key){const saved=await env.BUCKET.get('m1/workbooks/'+key);return saved?await saved.json():null;}
 export async function syncWorkbook(env,key){
- if(!['tidp','tracker'].includes(key))throw Error('Unknown workbook.');
+ if(!['tidp','tracker','midp'].includes(key))throw Error('Unknown workbook.');
  const data=await downloadWorkbook(env,key),title=key==='tidp'?'Asset Tagging Naming':'Tracker';
+ if(key==='midp'){
+  const names=read(data.bytes,{type:'array',bookSheets:true}).SheetNames.filter(n=>n!=='Index'&&n!=='YYY-ARX-BIM');
+  if(names.length>80)throw Error('MIDP exceeds the sheet limit.');
+  const rows=[];
+  // One sheet at a time bounds memory on the free Worker plan.
+  for(const name of names){const book=read(data.bytes,{type:'array',sheets:[name],cellText:false,cellFormula:false,cellHTML:false,cellStyles:false,sheetRows:10000});const sheet=book.Sheets[name];if(sheet['!fullref']&&utils.decode_range(sheet['!fullref']).e.r>=10000)throw Error('MIDP sheet exceeds the row limit.');rows.push(...parseMidpRows(utils.sheet_to_json(sheet,{header:1,defval:null}),name));}
+  if(!rows.length)throw Error('No MIDP model requirements found.');
+  const result={source:{...data.source,sheet:'Model sections; federation excluded'},rows};await env.BUCKET.put('m1/workbooks/midp',JSON.stringify(result));return result;
+ }
  const book=read(data.bytes,{type:'array',sheets:[title],cellFormula:false,cellHTML:false,cellStyles:false,sheetRows:10000});
  const sheet=book.Sheets[title];if(!sheet)throw Error('Required workbook tab is missing.');
- const raw=utils.sheet_to_json(sheet,{header:1,defval:null}),rows=key==='tidp'?parseAssetRows(raw):parseTrackerRows(raw);
+ // Read visibility separately: style parsing in the current tracker can suppress
+ // cached model-name strings. Values must come from the unstyled read.
+ const columns=key==='tracker'?read(data.bytes,{type:'array',sheets:[title],cellStyles:true,cellFormula:false,cellHTML:false,sheetRows:3}).Sheets[title]['!cols']:[];
+ const raw=utils.sheet_to_json(sheet,{header:1,defval:null}),hidden=(columns||[]).flatMap((c,i)=>c?.hidden?[i]:[]),rows=key==='tidp'?parseAssetRows(raw):parseTrackerRows(raw,hidden);
  const result={source:{...data.source,sheet:title},rows};
  await env.BUCKET.put('m1/workbooks/'+key,JSON.stringify(result));return result;
 }
