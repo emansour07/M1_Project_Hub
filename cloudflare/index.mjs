@@ -2,7 +2,7 @@ import {DurableObject} from 'cloudflare:workers';
 import {createHandler,stored,validateSnapshot} from '../worker.mjs';
 import {syncForma} from '../forma.mjs';
 import {saveBaseline} from '../models.mjs';
-import {syncProgress,progressSnapshot} from '../progress.mjs';
+import {syncProgress,progressSnapshot,progressStatus} from '../progress.mjs';
 import {validBaseline} from '../model-core.mjs';
 import {SQLiteStore} from './store.mjs';
 import {checkSourceAccess} from '../sources.mjs';
@@ -38,6 +38,7 @@ export class M1State extends DurableObject{
   }
   const owner=await isOwner(request,secret);
   if(path==='/api/models/access'&&request.method==='GET')return owner?json({...await checkSourceAccess(env),progress:await (await env.BUCKET.get('m1/progress/state'))?.json()}):json({error:'Owner access required.'},403);
+  if(path==='/api/models/status'&&request.method==='GET')return owner?json(await progressStatus(env)):json({error:'Owner access required.'},403);
   if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await workbookSnapshot(env,'tidp')});
   if(path==='/api/workbooks/sync'){
    if(!owner||request.method!=='POST'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);

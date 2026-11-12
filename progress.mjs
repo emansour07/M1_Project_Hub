@@ -10,6 +10,10 @@ function init(sql){
 }
 async function state(env){const s=await env.BUCKET.get(key);return s?await s.json():{};}
 async function save(env,s){await env.BUCKET.put(key,JSON.stringify(s));}
+export async function progressStatus(env){
+ const s=await state(env);init(env.SQL);const queue=env.SQL.exec('SELECT COUNT(*) total, SUM(done) checked FROM progress_queue WHERE generation=?',s.generation||'').toArray()[0];
+ return {...s,queue,files:env.SQL.exec('SELECT COUNT(*) total FROM progress_files WHERE generation=?',s.generation||'').toArray()[0].total};
+}
 export function excludedReferenceFolder(name){return /^(?:\d+[._\s-]*)?other[ _-]*assets$/i.test(String(name).trim());}
 export async function progressSnapshot(env){
  const s=await state(env);if(!s.published)return {scan:null,checking:{active:!!s.active,failed:!!s.error}};

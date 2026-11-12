@@ -1,5 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';
 import {syncProgress,progressSnapshot} from '../progress.mjs';import {sources} from '../sources.mjs';
+import {nextPath} from '../models.mjs';
+test('pagination accepts equivalent encoded folder URNs but rejects different folders and hosts',()=>{
+ const path='/data/v1/projects/b.test/folders/urn%3Aadsk.wipemea%3Afs.folder%3Aco.test/contents';
+ assert.equal(nextPath('https://developer.api.autodesk.com'+decodeURIComponent(path)+'?page[number]=2',path),path+'?page[number]=2');
+ assert.throws(()=>nextPath('https://example.com'+path+'?page[number]=2',path),/Unexpected/);
+ assert.throws(()=>nextPath('https://developer.api.autodesk.com'+path.replace('co.test','co.other'),path),/Unexpected/);
+});
 function environment(){const db=new DatabaseSync(':memory:'),objects=new Map();const env={ACC_PROJECT_ID:'test',SQL:{exec(query,...args){const stmt=db.prepare(query);const rows=stmt.columns().length?stmt.all(...args):(stmt.run(...args),[]);return {toArray:()=>rows};}},BUCKET:{async get(key){return objects.has(key)?{json:async()=>JSON.parse(objects.get(key))}:null;},async put(key,value){objects.set(key,value);return {etag:'x'};}}};objects.set('m1/workbooks/tidp',JSON.stringify({rows:[{existing:'A48',proposed:'CRA'}]}));objects.set('m1/workbooks/tracker',JSON.stringify({rows:[]}));return {env,objects,db};}
 const folder=(id,name)=>({id,type:'folders',attributes:{name}});
 test('large scans resume across bounded invocations and publish only after completion',async()=>{
