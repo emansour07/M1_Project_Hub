@@ -114,7 +114,7 @@ export class M1State extends DurableObject{
 
     if(path==='/auth/editor/logout'&&request.method==='POST')return logoutEditor(env,request);
 
-    if(path==='/api/editor/workspace'&&request.method==='GET'){const tracker=await trackerSnapshot(env);tracker.rows=tracker.rows.filter(r=>canEditRow(user,r));const scope=await getScope(env);return json({user,tracker,editableFields:tracker.columns.filter(c=>!protectedColumn(c)&&canEditField(user,c.key)).map(c=>c.key),drafts:readDrafts(env,user),editors:user.owner?await editorList(env):null,assets:(scope?.rows||[]).map(r=>({id:r.id,label:r.zone+' · '+r.name+' · '+r.proposed})),disciplines:[...new Set(tracker.rows.map(r=>r.discipline))].sort()});}
+    if(path==='/api/editor/workspace'&&request.method==='GET'){const tracker=await trackerSnapshot(env);tracker.rows=tracker.rows.filter(r=>canEditRow(user,r));const scope=await getScope(env);return json({user,tracker,editableFields:tracker.columns.filter(c=>!protectedColumn(c)&&canEditField(user,c.key)).map(c=>c.key),drafts:readDrafts(env,user),editors:user.owner?await editorList(env):null,assets:(scope?.rows||[]).map(r=>({id:r.id,label:r.zone+' · '+r.name+' · '+(r.proposed||r.code)})),disciplines:[...new Set(tracker.rows.map(r=>r.discipline))].sort()});}
 
     if(path==='/api/editor/access'&&request.method==='PUT'&&user.owner){const scope=await getScope(env),tracker=await trackerSnapshot(env);return json(await saveEditors(env,await limitedJson(request,100000),(scope?.rows||[]).map(r=>r.id),tracker.columns.filter(c=>!protectedColumn(c)).map(c=>c.key)));}
 
