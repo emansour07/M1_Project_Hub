@@ -12,3 +12,5 @@
 #model-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:800px){#model-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .knowledge-layout>*{min-width:0}.guide{min-width:0;overflow-wrap:anywhere}.guide td:first-child{min-width:70px}.guide td:last-child{min-width:220px}.mapping-tools{flex-wrap:wrap;gap:12px}.guide .table-wrap{max-width:100%}
+
+#model-matrix{max-height:560px}#model-matrix thead{position:sticky;top:0;z-index:1}
