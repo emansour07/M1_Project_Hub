@@ -1,3 +1,5 @@
+import {leadColumns} from './tracker-fields.mjs';
+import {filterDeliverables} from './delivery-core.mjs';
 import {read,utils} from 'xlsx';
 import {downloadWorkbook} from './sources.mjs';
 import {parseNamingRules} from './naming.mjs';
@@ -27,6 +29,9 @@ export function percentage(value){
  const result=s.includes('%')?n:n<=1?n*100:n;
  return result<=100?Math.round(result*10)/10:null;
 }
+export function trackerColumns(rows,hiddenColumns=[]){
+ const header=rows.findIndex(r=>r.some(c=>/^LOG\s*%$/i.test(text(c)))&&r.some(c=>/^LOI\s*%$/i.test(text(c))));if(header<0)throw Error('Tracker headers were not found.');let group='';return rows[header].flatMap((v,i)=>{if(!text(v))return [];const heading=text(rows[header-1]?.[i]);if(heading)group=heading;else if(!/^(LOD|Team)/i.test(group))group='';return [{key:leadColumns.find(c=>c.label===text(v))?.key||utils.encode_col(i),excelColumn:utils.encode_col(i),label:text(v),group,hidden:hiddenColumns.includes(i),index:i,type:leadColumns.find(c=>c.label===text(v))?.type||(/date/i.test(text(v))?'date':/^(LOG|LOI)\s*%$/i.test(text(v))?'percent':'text'),readonly:leadColumns.find(c=>c.label===text(v))?.readonly||false}];});
+}
 export function parseTrackerRows(rows,hiddenColumns=[]){
  const header=rows.findIndex(r=>r.some(c=>/^LOG\s*%$/i.test(text(c)))&&r.some(c=>/^LOI\s*%$/i.test(text(c))));
  if(header<0)throw Error('LOG and LOI columns were not found.');
@@ -38,7 +43,7 @@ export function parseTrackerRows(rows,hiddenColumns=[]){
  for(let i=header+1;i<rows.length;i++){
   const r=rows[i],n=text(r[name]);
   if(!/^M1-/i.test(n)){const nonempty=r.map(text).filter(Boolean);if(nonempty.length===1)group=nonempty[0];continue;}
-  result.push({name:n,description:text(r[desc]),parcel:text(r[parcel]),group,log:percentage(r[log]),loi:percentage(r[loi]),row:i+1});
+  result.push({fields:Object.fromEntries(trackerColumns(rows,hiddenColumns).map(c=>[c.key,r[c.index]??null])),name:n,description:text(r[desc]),parcel:text(r[parcel]),group,log:percentage(r[log]),loi:percentage(r[loi]),row:i+1});
  }
  if(!result.length)throw Error('No model tracker rows found.');return result;
 }
@@ -67,13 +72,13 @@ async function saveLedger(env,source,entries){
  const scope=await getScope(env);if(!scope)throw Error('Read the scope register first.');entries=entries.map(r=>scopedFile(r,scope)).filter(Boolean);
  const generation=String(source.version)+'-'+crypto.randomUUID(),count=Math.ceil(entries.length/500);
  for(let i=0;i<count;i++)await env.BUCKET.put('m1/midp/'+generation+'/'+i,JSON.stringify(entries.slice(i*500,(i+1)*500)));
- const meta={source,generation,chunks:count,total:entries.length,dated:entries.filter(r=>r.latestIssueDate).length,scopeVersion:scope.revision};await env.BUCKET.put('m1/midp/latest',JSON.stringify(meta));if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/midp/%' AND key<>? AND key<>'m1/midp/refresh-lock' AND key NOT LIKE ?",'m1/midp/latest','m1/midp/'+generation+'/%');return meta;
+ const meta={source,generation,chunks:count,total:entries.length,dated:entries.filter(r=>r.latestIssueDate).length,scopeVersion:scope.revision,parserVersion:2};await env.BUCKET.put('m1/midp/latest',JSON.stringify(meta));if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/midp/%' AND key<>? AND key<>'m1/midp/refresh-lock' AND key NOT LIKE ?",'m1/midp/latest','m1/midp/'+generation+'/%');return meta;
 }
 export async function midpSnapshot(env){const meta=await (await env.BUCKET.get('m1/midp/latest'))?.json();if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await env.BUCKET.get('m1/midp/'+meta.generation+'/'+i);if(!chunk)throw Error('MIDP cache is incomplete.');entries.push(...await chunk.json());}const scope=await getScope(env),kept=entries.map(r=>scopedFile(r,scope)).filter(Boolean);return {source:meta.source,total:kept.length,dated:kept.filter(r=>r.latestIssueDate).length,entries:kept};}
-export async function exportMidp(env,start,end){
+export async function exportMidp(env,start,end,filters={}){
  dateRange(start,end);const data=await downloadWorkbook(env,'midp');let saved=await midpSnapshot(env);
  if(!saved||saved.source.version!==data.source.version){const parsed=extractMidp(data.bytes);await saveLedger(env,data.source,parsed.deliverables);saved=await midpSnapshot(env);}
- const result=filterMidpWorkbook(data.bytes,saved.entries,start,end);return {...result,source:data.source};
+ const result=filterMidpWorkbook(data.bytes,filterDeliverables(saved.entries,filters),start,end);return {...result,source:data.source};
 }
 export async function syncWorkbook(env,key){
  if(!['tidp','tracker','midp','scope'].includes(key))throw Error('Unknown workbook.');
@@ -84,18 +89,19 @@ export async function syncWorkbook(env,key){
  }
  const scope=await getScope(env);if(key!=='tidp'&&!scope)throw Error('Read the scope register and naming table first.');
  if(key==='midp'){
-  const prior=await(await env.BUCKET.get('m1/midp/latest'))?.json();if(prior?.source.version===data.source.version&&prior.scopeVersion===scope.revision){const baseline=await workbookSnapshot(env,'midp');if(baseline){prior.source=data.source;await env.BUCKET.put('m1/midp/latest',JSON.stringify(prior));baseline.source.checkedAt=data.source.checkedAt;await env.BUCKET.put('m1/workbooks/midp',JSON.stringify(baseline));return baseline;}}
+  const prior=await(await env.BUCKET.get('m1/midp/latest'))?.json();if(prior?.parserVersion===2&&prior?.source.version===data.source.version&&prior.scopeVersion===scope.revision){const baseline=await workbookSnapshot(env,'midp');if(baseline){prior.source=data.source;await env.BUCKET.put('m1/midp/latest',JSON.stringify(prior));baseline.source.checkedAt=data.source.checkedAt;await env.BUCKET.put('m1/workbooks/midp',JSON.stringify(baseline));return baseline;}}
   const {rows,deliverables}=extractMidp(data.bytes);await saveLedger(env,data.source,deliverables);
   const result={source:{...data.source,sheet:'Model sections; federation excluded'},rows:rows.map(r=>scopedFile(r,scope)).filter(Boolean)};await env.BUCKET.put('m1/workbooks/midp',JSON.stringify(result));return result;
  }
  const deliverySheets=['ARCH','EWK','STR','MECH','ELE','PLU','FFI','ELV'];
- const book=read(data.bytes,{type:'array',sheets:key==='tidp'?[title,'Supporting Data',...deliverySheets]:[title],cellFormula:false,cellHTML:false,cellStyles:false,sheetRows:10000});
+ const book=read(data.bytes,{type:'array',sheets:key==='tidp'?[title,'Supporting Data',...deliverySheets]:[title],cellFormula:key==='tracker',cellHTML:false,cellStyles:false,sheetRows:10000});
  const sheet=book.Sheets[title];if(!sheet)throw Error('Required workbook tab is missing.');
  // Read visibility separately: style parsing in the current tracker can suppress
  // cached model-name strings. Values must come from the unstyled read.
  const columns=key==='tracker'?read(data.bytes,{type:'array',sheets:[title],cellStyles:true,cellFormula:false,cellHTML:false,sheetRows:3}).Sheets[title]['!cols']:[];
  const raw=utils.sheet_to_json(sheet,{header:1,defval:null}),hidden=(columns||[]).flatMap((c,i)=>c?.hidden?[i]:[]),rows=key==='tidp'?parseAssetRows(raw):parseTrackerRows(raw,hidden);
  const result={source:{...data.source,sheet:title},rows:rows.map(r=>key==='tidp'?r:scopedFile(r,scope)).filter(Boolean)};
+ if(key==='tracker'){result.columns=trackerColumns(raw,hidden);result.date1904=!!book.Workbook?.WBProps?.date1904;for(const r of result.rows)r.formulaFields=result.columns.filter(c=>sheet[c.excelColumn+r.row]?.f).map(c=>c.key);}
  if(key==='tidp'){
   const scopeSource=await workbookSnapshot(env,'scope');if(!scopeSource)throw Error('Read the scope register first.');
   const policy={...scopePolicy(scopeSource.rows,rows),source:scopeSource.source};policy.revision=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(policy.rows))))).map(n=>n.toString(16).padStart(2,'0')).join('').slice(0,16);await env.BUCKET.put('m1/scope',JSON.stringify(policy));result.rows=scopedMapping(policy);

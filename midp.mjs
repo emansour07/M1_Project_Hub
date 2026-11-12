@@ -1,3 +1,4 @@
+import {sectionCategory} from './delivery-core.mjs';
 import {unzipSync,zipSync,strFromU8,strToU8} from 'fflate';
 const text=v=>String(v??'').trim();
 export const MIDP_URL='https://acc.autodesk.eu/docs/files/projects/e80ed581-2f73-4b70-a8d1-f100b9b95f4d?folderUrn=urn%3Aadsk.wipemea%3Afs.folder%3Aco.2yq8fVilSXijk7ixwBZdrg&entityId=urn%3Aadsk.wipemea%3Adm.lineage%3AKx4epOWERrSmEs2pLoS5SA&viewModel=detail&moduleId=folders';
@@ -11,12 +12,12 @@ export function issueDate(value,date1904=false){
 export function parseMidpDeliverables(rows,sheet,date1904=false){
  const header=rows.findIndex(r=>r.some(v=>/^Issue Date$/i.test(text(v))));if(header<0)return [];
  const columns=rows[header].flatMap((v,i)=>/^Issue Date$/i.test(text(v))?[i]:[]),formats=rows.slice(0,header+3).find(r=>r.some(v=>/^\.rvt$/i.test(text(v))))||[];
- let discipline='';const entries=[];
+ let discipline='',category='Unclassified';const entries=[];
  for(let i=header+1;i<rows.length;i++){
-  const r=rows[i],name=text(r[0]);if(/^DISCIPLINE:/i.test(name))discipline=name.replace(/^DISCIPLINE:\s*/i,'');if(!/^M1-/i.test(name))continue;
+  const r=rows[i],name=text(r[0]);if(/^DISCIPLINE:/i.test(name)){discipline=name.replace(/^DISCIPLINE:\s*/i,'');category='Unclassified';}const section=sectionCategory(name);if(section)category=section;if(!/^M1-/i.test(name))continue;
   const exchanges=columns.flatMap((column,index)=>{const date=issueDate(r[column],date1904);return date?[{exchange:index+1,date,revision:text(r[column-1]),author:text(r[column+1]),transmittal:text(r[column+2])}]:[];});
   const latest=[...exchanges].sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
-  entries.push({id:sheet+'!'+(i+1),sheet,row:i+1,name,description:text(r[1]),discipline,asset:text(r[17])||name.split('-')[3],originator:text(r[16])||name.split('-')[2],formats:formats.flatMap((v,c)=>/^\./.test(text(v))&&/^yes$/i.test(text(r[c]))?[text(v)]:[]),latestIssueDate:latest?.date||null,latestExchange:latest?.exchange||null,revision:latest?.revision||null,exchanges,invalidDateCells:columns.filter(c=>text(r[c])&&!issueDate(r[c],date1904)).length});
+  entries.push({id:sheet+'!'+(i+1),sheet,row:i+1,name,description:text(r[1]),discipline,category,asset:text(r[17])||name.split('-')[3],originator:text(r[16])||name.split('-')[2],formats:formats.flatMap((v,c)=>/^\./.test(text(v))&&/^yes$/i.test(text(r[c]))?[text(v)]:[]),latestIssueDate:latest?.date||null,latestExchange:latest?.exchange||null,revision:latest?.revision||null,exchanges,invalidDateCells:columns.filter(c=>text(r[c])&&!issueDate(r[c],date1904)).length});
  }
  return entries;
 }

@@ -26,7 +26,7 @@ export function scopePolicy(scopeRows,mapping){
  });return {rows};
 }
 function zoneHint(file){
- const p=upper(file.name).split('-')[1];if(p==='102')return 'Island';if(p==='121')return 'Mainland';if(p==='YYY'&&/^M1-YYY-[A-Z0-9]+-SS[12]-/i.test(file.name))return 'Subsea';
+ const explicit=upper(file.parcel).replace(/[^0-9]/g,'');if(explicit==='102')return 'Island';if(explicit==='121')return 'Mainland';const p=upper(file.name).split('-')[1];if(p==='102')return 'Island';if(p==='121')return 'Mainland';if(p==='YYY'&&/^M1-YYY-[A-Z0-9]+-SS[12]-/i.test(file.name))return 'Subsea';
  const path=(file.folderPath||[]).join(' ');return /\bmainland\b/i.test(path)?'Mainland':/\bisland\b/i.test(path)?'Island':/\bsubsea\b/i.test(path)?'Subsea':null;
 }
 export function scopeMatch(file,policy){
