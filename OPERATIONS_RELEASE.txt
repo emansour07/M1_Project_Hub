@@ -1,0 +1,42 @@
+M1 interim operations release — 13 November 2026
+Existing frontend: https://emansour07.github.io/M1_Project_Hub/
+Existing backend: https://m1-project-api.eslam-mansour.workers.dev
+
+Owner tools
+/admin/operations — joiner inbox, project-role refresh, upload destinations,
+organisation-chart publication and recent upload states.
+/admin/masterplans — image import, explicit asset positions/functions and ACC
+source browsing. The supplied source is restricted to the fixed M1 folder.
+/sharing — approved Autodesk editors upload within assigned asset/discipline.
+/access-request — public M1 joiner form using current project roles.
+/requirements — collaborative register; no owner approval gate.
+
+Validation
+86 JavaScript tests and 38 Django tests. Live role read loaded 22 project roles;
+10 observed asset/discipline/folder routes configured. Orgchart published from
+supplied workbook. Three Mechanical EXAMPLE drafts created through owner UI.
+Actual ACC invitations and model publication were not exercised with test data.
+First real operation should be checked against ACC before wider rollout.
+
+Access and uploads
+CSRF/origin checks on every write. Owner-only approvals; Docs member access,
+requested role only. Existing memberships preserved. Uncertain writes stop for
+manual ACC review. Role refresh exposes roles currently used by M1 members.
+No automatic account-administrator or project-administrator grants.
+Upload preview validates project root, assigned scope, filename and existing tip.
+Chunk requests stay below the free Worker subrequest limit. Each upload records
+its initiator and state. A changed ACC tip prevents automatic publication.
+Owner-confirmed mappings can be revised; revocation takes effect on each request.
+
+Pending external inputs
+Email notifications and weekly reminders need an arx.ing mailbox/relay connection;
+they do not send from this interim implementation. Owner settings remain paused.
+Mainland plan not supplied. Island source loaded; remaining positions need review.
+MIDP v2 still has no filled Planned/Forecast/approval values. Readers are ready.
+Company deployment and migration remain with IT. Preserve Cloudflare project data
+until an explicit tested migration has moved requirements, requests, images/pins,
+confirmed destinations and other live state to company storage.
+
+The GitHub source contains no project workbooks, raw orgchart, model files,
+credentials, database or uploaded images. Company source and handover remain
+under company/. Backend/runtime configurations are hosting-specific.

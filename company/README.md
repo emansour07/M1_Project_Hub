@@ -86,3 +86,11 @@ Autodesk implementation references:
 - [Hub Admin tutorial](https://aps.autodesk.com/en/docs/acc/v1/tutorials/admin)
 - [File description field](https://aps.autodesk.com/blog/fetch-description-attribute-file-item-acc-and-bim360)
 - [Django deployment checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/)
+
+## Interim release — 13 November 2026
+
+The existing GitHub Pages / Cloudflare deployment remains active until internal hosting is ready. Owner identity now uses eslam.mansour@arx.ing. The Cloudflare owner controls include project-role access requests, confirmed upload destinations, organisation-chart publication and a visual masterplan editor. Model uploads transfer in 8 MB parts (512 MB per file maximum on the interim host). Company Django uploads retain their separately documented 2 GB limit.
+
+If every approval value for an asset is blank, completeness stays unscored; once statuses are present, blank documents remain in the denominator. The current live MIDP v2 has 3,900 scoped rows and no filled Planned, Forecast or MACE_ACC_Status values.
+
+The Island image is now loaded on the interim host, with three verified Revit-highlighted accommodation buildings positioned. Remaining asset locations need confirmation, especially duplicate source labels. Mainland is still pending. Project imagery and operation records are stored outside Git source. They require a separate migration to the company server.

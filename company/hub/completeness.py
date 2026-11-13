@@ -19,6 +19,6 @@ def calculate(entries,policy):
             count+=okay;blank+=not any(statuses);conflict+=len(statuses)>1
             category=rows[0].get('category','Unclassified');categories[category]['total']+=1;categories[category]['approved']+=okay
         result[asset]={'total':len(documents),'approved':count if enabled else None,'blankStatus':blank,'conflictingStatus':conflict,
-            'percentage':round(count/len(documents)*100,1) if enabled and documents else None,
+            'percentage':round(count/len(documents)*100,1) if enabled and documents and blank<len(documents) else None,
             'categories':dict(categories) if enabled else {},'statusField':'MACE_ACC_Status'}
     return result

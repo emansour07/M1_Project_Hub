@@ -1,3 +1,4 @@
+import {operationsRoute} from './operations.mjs';
 import {reminderSettings,saveReminderSettings} from './reminders.mjs';
 import {RequirementsStore,schema,permitted} from './requirements.mjs';
 import {assetCompleteness} from './completeness.mjs';
@@ -61,7 +62,7 @@ export class M1Application {
 
  constructor(storage,env,templates){this.templates=templates;this.storage=storage;this.env={...env,BUCKET:new SQLiteStore(storage),SQL:storage.sql};this.auth=new OwnerCodeAuth(storage.sql,env.M1_ADMIN_KEY);this.app=createHandler(templates.adminHtml,{schema:1,name:'Awaiting M1 reviews',reportAt:946684800000,reviews:[],voidCount:0,warnings:[]});}
 
- async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness'].includes(url.pathname))||(request.method==='POST'&&['/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
+ async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness','/api/orgchart/image','/api/masterplans'].includes(url.pathname))||(request.method==='POST'&&['/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
 
  async handle(request){const {trackerEditorHtml,contentEditorHtml,remindersHtml}=this.templates;const env=this.env,url=new URL(request.url),path=url.pathname;
 
@@ -102,6 +103,7 @@ export class M1Application {
   }
 
   const owner=await isOwner(request,secret);
+  const operations=await operationsRoute(this,request,owner);if(operations)return operations;
 
   if(path==='/requirements'&&request.method==='GET')return new Response(this.templates.requirementsHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}});
   if(path==='/api/requirements'||path.startsWith('/api/requirements/')){
