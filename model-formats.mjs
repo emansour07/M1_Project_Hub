@@ -8,11 +8,11 @@ export function groupModels(files,isModel){
   const candidates=native.length?native:variants;
   // An older native file must not be hidden by a freshly exported derivative.
   const representative=[...candidates].sort((a,b)=>(Date.parse(a.updatedAt)||0)-(Date.parse(b.updatedAt)||0))[0];
-  const locations=[...new Set(variants.map(f=>f.source))].map(source=>{
-   const members=variants.filter(f=>f.source===source),formats=[...new Set(members.map(f=>extension(f.name)))];
+  const locations=[...new Set(variants.map(f=>f.source+'|'+(f.folderId||'')))].map(location=>{
+   const members=variants.filter(f=>f.source+'|'+(f.folderId||'')===location),source=members[0].source,formats=[...new Set(members.map(f=>extension(f.name)))];
    const stage=source==='review'?'Review':'Shared',required=source==='review'?['native','nwc','ifc','dwfx']:['native','nwc'];
    const missing=required.filter(format=>format==='native'?!formats.some(x=>x==='rvt'||x==='dwg'):!formats.includes(format));
-   return {source,stage,formats,missing};
+   return {source,folderId:members[0].folderId,folderPath:members[0].folderPath,stage,formats,missing};
   });
   return {...representative,modelKey:key,formats:[...new Set(variants.map(f=>extension(f.name)))].sort(),variants,locations};
  });

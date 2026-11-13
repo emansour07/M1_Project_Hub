@@ -9,24 +9,29 @@ export function issueDate(value,date1904=false){
  if(m){[,y,month,day]=m;}else if(m=/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(s)){[,day,month,y]=m;}else return null;
  const d=new Date(Date.UTC(+y,+month-1,+day));return d.getUTCFullYear()===+y&&d.getUTCMonth()===+month-1&&d.getUTCDate()===+day?d.toISOString().slice(0,10):null;
 }
+export function plannedColumns(rows,header){
+ const find=pattern=>{const columns=new Set();for(const r of rows.slice(0,header+2))r.forEach((v,i)=>{if(pattern.test(text(v).replace(/\s+/g,' ')))columns.add(i);});return columns.size===1?[...columns][0]:null;};
+ return {planned:find(/^Planned(?: (?:Submission|Issue|Delivery))?(?: Date)?$/i),forecast:find(/^Forecast(?:ed)?(?: (?:Submission|Issue|Delivery))?(?: Date)?$/i),approval:find(/^MACE_ACC_Status$/i),stage:find(/^Project Stage$/i)};
+}
 export function parseMidpDeliverables(rows,sheet,date1904=false){
  const header=rows.findIndex(r=>r.some(v=>/^Issue Date$/i.test(text(v))));if(header<0)return [];
  const columns=rows[header].flatMap((v,i)=>/^Issue Date$/i.test(text(v))?[i]:[]),formats=rows.slice(0,header+3).find(r=>r.some(v=>/^\.rvt$/i.test(text(v))))||[];
+ const schedule=plannedColumns(rows,header);
  let discipline='',category='Unclassified';const entries=[];
  for(let i=header+1;i<rows.length;i++){
   const r=rows[i],name=text(r[0]);if(/^DISCIPLINE:/i.test(name)){discipline=name.replace(/^DISCIPLINE:\s*/i,'');category='Unclassified';}const section=sectionCategory(name);if(section)category=section;if(!/^M1-/i.test(name))continue;
   const exchanges=columns.flatMap((column,index)=>{const date=issueDate(r[column],date1904);return date?[{exchange:index+1,date,revision:text(r[column-1]),author:text(r[column+1]),transmittal:text(r[column+2])}]:[];});
   const latest=[...exchanges].sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
-  entries.push({id:sheet+'!'+(i+1),sheet,row:i+1,name,description:text(r[1]),discipline,category,asset:text(r[17])||name.split('-')[3],originator:text(r[16])||name.split('-')[2],formats:formats.flatMap((v,c)=>/^\./.test(text(v))&&/^yes$/i.test(text(r[c]))?[text(v)]:[]),latestIssueDate:latest?.date||null,latestExchange:latest?.exchange||null,revision:latest?.revision||null,exchanges,invalidDateCells:columns.filter(c=>text(r[c])&&!issueDate(r[c],date1904)).length});
+  entries.push({id:sheet+'!'+(i+1),sheet,row:i+1,name,description:text(r[1]),discipline,category,asset:text(r[17])||name.split('-')[3],originator:text(r[16])||name.split('-')[2],formats:formats.flatMap((v,c)=>/^\./.test(text(v))&&/^yes$/i.test(text(r[c]))?[text(v)]:[]),approvalStatus:schedule.approval===null?'':text(r[schedule.approval]),approvalColumnFound:schedule.approval!==null,projectStage:schedule.stage===null?'':text(r[schedule.stage]),plannedDate:schedule.planned===null?null:issueDate(r[schedule.planned],date1904),forecastDate:schedule.forecast===null?null:issueDate(r[schedule.forecast],date1904),plannedColumnFound:schedule.planned!==null,forecastColumnFound:schedule.forecast!==null,latestIssueDate:latest?.date||null,latestExchange:latest?.exchange||null,revision:latest?.revision||null,exchanges,invalidDateCells:columns.filter(c=>text(r[c])&&!issueDate(r[c],date1904)).length});
  }
  return entries;
 }
 export function dateRange(start,end){if(!/^\d{4}-\d{2}-\d{2}$/.test(start||'')||!/^\d{4}-\d{2}-\d{2}$/.test(end||'')||issueDate(start)!==start||issueDate(end)!==end||start>end)throw Error('Choose a valid start and end date.');return {start,end};}
-export const inDateRange=(row,start,end)=>!!row.latestIssueDate&&row.latestIssueDate>=start&&row.latestIssueDate<=end;
+export const inDateRange=(row,start,end)=>!!row.plannedDate&&row.plannedDate>=start&&row.plannedDate<=end;
 const decode=s=>s.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
 const attrs=tag=>Object.fromEntries([...tag.matchAll(/([\w:]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
 export function filterMidpWorkbook(bytes,entries,start,end){
- dateRange(start,end);const selected=entries.filter(r=>inDateRange(r,start,end));if(!selected.length)throw Error('No MIDP entries have a latest issue date in this range.');
+ dateRange(start,end);const selected=entries.filter(r=>inDateRange(r,start,end));if(!selected.length)throw Error('No MIDP entries have a planned date in this range.');
  let total=0;const parts=unzipSync(bytes,{filter(file){total+=file.originalSize;if(total>60000000||file.originalSize>10000000)throw Error('Workbook exceeds the export size limit.');return true;}});
  let workbook=strFromU8(parts['xl/workbook.xml']),rels=strFromU8(parts['xl/_rels/workbook.xml.rels']);
  const targets=new Map([...rels.matchAll(/<Relationship\b[^>]*\/>/g)].map(m=>{const a=attrs(m[0]);return [a.Id,a.Target];}));

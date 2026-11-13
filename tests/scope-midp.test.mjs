@@ -27,7 +27,7 @@ test('reviews remove excluded documents and fully excluded workflows',()=>{
 test('MIDP chooses the latest valid date across exchanges and treats blanks as undated',()=>{
  const rows=[['Title',null,'Issue Date',null,'Issue Date'],['DISCIPLINE: ARCH'],['M1-FXX-ARX-CRA-05-BM010-BNM-XX-000001','Model','12/11/2026',null,'2026-11-10'],['M1-FXX-ARX-CRA-05-BM010-BNM-XX-000002','Model','\u00a0',null,'31/02/2026']];
  const [a,b]=parseMidpDeliverables(rows,'CRA');assert.equal(a.latestIssueDate,'2026-11-12');assert.equal(a.latestExchange,1);assert.equal(b.latestIssueDate,null);assert.equal(b.invalidDateCells,1);
- assert.equal(inDateRange(a,'2026-11-12','2026-11-12'),true);assert.equal(inDateRange(b,'2026-01-01','2027-01-01'),false);assert.throws(()=>dateRange('2026-02-30','2026-11-12'));assert.throws(()=>dateRange('2026-11-13','2026-11-12'));assert.equal(issueDate(46338),'2026-11-12');
+ assert.equal(inDateRange(a,'2026-11-12','2026-11-12'),false);assert.equal(inDateRange(b,'2026-01-01','2027-01-01'),false);assert.throws(()=>dateRange('2026-02-30','2026-11-12'));assert.throws(()=>dateRange('2026-11-13','2026-11-12'));assert.equal(issueDate(46338),'2026-11-12');
 });
 test('MIDP export physically removes excluded deliverables and sheets while retaining selected cell styles and layout',()=>{
  const files={
@@ -37,6 +37,8 @@ test('MIDP export physically removes excluded deliverables and sheets while reta
  'xl/worksheets/sheet2.xml':'<worksheet>OUTSIDE SECRET</worksheet>',
  'xl/styles.xml':'<styleSheet>preserve-style-table</styleSheet>',
  'xl/sharedStrings.xml':'<sst><si><t>Title</t></si><si><t>M1-FXX-ARX-CRA-05-BM010-BNM-XX-000001</t></si><si><t>M1-FXX-ARX-GS1-05-BM010-BNM-XX-000002</t></si><si><t>OUTSIDE SECRET</t></si></sst>'};
- const bytes=zipSync(Object.fromEntries(Object.entries(files).map(([k,v])=>[k,strToU8(v)]))),out=filterMidpWorkbook(bytes,[{sheet:'CRA',row:10,latestIssueDate:'2026-11-12'}],'2026-11-12','2026-11-12'),parts=unzipSync(out.bytes),all=Object.values(parts).map(strFromU8).join('');
+ const bytes=zipSync(Object.fromEntries(Object.entries(files).map(([k,v])=>[k,strToU8(v)]))),out=filterMidpWorkbook(bytes,[{sheet:'CRA',row:10,plannedDate:'2026-11-12'}],'2026-11-12','2026-11-12'),parts=unzipSync(out.bytes),all=Object.values(parts).map(strFromU8).join('');
  assert.equal(out.count,1);assert.equal(parts['xl/worksheets/sheet2.xml'],undefined);assert.ok(!all.includes('GS1'));assert.ok(!all.includes('OUTSIDE SECRET'));assert.ok(!all.includes('123456'));assert.equal(strFromU8(parts['xl/styles.xml']),files['xl/styles.xml']);assert.match(strFromU8(parts['xl/worksheets/sheet1.xml']),/ht="34"/);assert.match(all,/s="23"/);assert.match(all,/width="30"/);
 });
+
+test('MIDP uses named planned and forecast columns, never issue date as an export fallback',()=>{const rows=[['Title','Description','Issue Date','Planned Submission Date','Forecast Date'],['M1-FXX-SAP-CRA-05-BM010-BNM-XX-000001','Model','2026-12-01','2026-11-13',46340],['M1-FXX-SAP-CRA-05-BM010-BNM-XX-000002','Model','2026-11-13','','2026-11-14']];const [a,b]=parseMidpDeliverables(rows,'CRA');assert.equal(a.plannedDate,'2026-11-13');assert.equal(a.forecastDate,'2026-11-14');assert.equal(inDateRange(a,'2026-11-13','2026-11-13'),true);assert.equal(inDateRange(a,'2026-12-01','2026-12-01'),false);assert.equal(inDateRange(b,'2026-11-13','2026-11-14'),false);assert.equal(b.forecastDate,'2026-11-14');});

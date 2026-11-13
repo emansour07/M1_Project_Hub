@@ -1,0 +1,108 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>M1 — IT hosting and update instructions</title><style>body{font:16px/1.6 Arial,sans-serif;color:#171717;background:#fff;max-width:980px;margin:48px auto;padding:0 28px}h1{font-size:32px;border-bottom:4px solid #111;padding-bottom:20px}h2{font-size:23px;margin-top:40px}h3{font-size:19px}a{color:#144b70}pre{background:#f1f3f4;padding:18px;overflow:auto;border-left:3px solid #111}code{font-size:14px}li{margin:8px 0}@media print{body{font-size:11pt;margin:0;max-width:none}h2,h3{break-after:avoid}pre{white-space:pre-wrap}a{color:inherit}}</style></head><body><h1 id="m1-project-hub-internal-hosting-and-future-updates">M1 Project Hub — internal hosting and future updates</h1>
+<p>Prepared 13 November 2026 • Owner: Eslam Mansour • Approval email: eslam.mansour@arx.ing</p>
+<h2 id="hosting-requirement">Hosting requirement</h2>
+<p>Host the complete application inside ARX infrastructure: frontend, Python/Django backend, database, uploaded media, logs, backups and source repository. Do not deploy this package to GitHub Pages, Cloudflare or ChatGPT. An internal Git server is optional; release ZIP files can be used without any Git service.</p>
+<p>Autodesk ACC/Forma remains the project data source and approved external integration. No public inbound access is required by this implementation: staff reach the site through the company network/VPN. The editor's browser must reach both Autodesk and the internal callback URL during sign-in. Verify that the chosen HTTPS callback is accepted by the M1 APS application before go-live.</p>
+<p>Viewers need no application login once on the permitted company network. This is enforced by the network/reverse proxy, not a viewer email allow-list. Owner controls require Django sign-in. Editors use verified Autodesk accounts that the owner has explicitly approved.</p>
+<h2 id="package-contents">Package contents</h2>
+<ul>
+<li><code>company/</code>: readable Django source, migrations, templates, tests and operating instructions.</li>
+<li><code>pages/</code>: readable, prebuilt HTML/CSS/JavaScript and local images. These are the deployable frontend source files; no Node.js or browser CDN is required. Company builds use system-font fallbacks.</li>
+<li><code>company/private/media/orgchart.svg</code>: initial organisation-chart seed only. Copy it into persistent media on first installation; do not overwrite a newer chart on updates.</li>
+<li><code>company/requirements-tested.txt</code>: exact Python dependency versions used for validation. <code>requirements.txt</code> records compatible dependency ranges for planned maintenance.</li>
+<li><code>MANIFEST.sha256.json</code>: per-file integrity hashes. Verify before modifying or deploying the package.</li>
+</ul>
+<p>No database, Autodesk credentials, mailbox credentials, populated environment file or raw project workbook is included. The package does contain the supplied organisation chart and project configuration; retain it internally.</p>
+<h2 id="decisions-it-must-supply">Decisions IT must supply</h2>
+<ol>
+<li>Dedicated internal HTTPS hostname, DNS, TLS certificate and network/VPN access policy. Root-path hosting is required; a URL such as <code>/tools/m1/</code> has not been implemented.</li>
+<li>Windows/IIS or Linux reverse proxy and service-manager arrangement. Use a production WSGI server; the included example uses Waitress.</li>
+<li>Service identity, persistent data paths, database choice, backup retention, monitoring and restore owner.</li>
+<li>An approved arx.ing sender mailbox and SMTP relay. Microsoft Graph mail is not implemented. The recipient for joiner approvals is already eslam.mansour@arx.ing.</li>
+<li>M1-only Autodesk SSA credentials and editor-login application credentials installed through the company secret store. Existing SB05 credentials must not be substituted.</li>
+</ol>
+<p>Python 3.14.7 was used for this package's local tests. Validate the company's supported Python runtime and dependency set in staging. SQLite is the supplied single-server database; keep it on a local disk, not a network share. PostgreSQL requires an IT settings module and driver, and has not been integration-tested for this release.</p>
+<h2 id="permanent-storage-and-release-layout">Permanent storage and release layout</h2>
+<p>Use separate code releases and persistent state. Example structure, using an IT-selected absolute base path:</p>
+<pre><code class="language-text">M1/
+  releases/&lt;release-id&gt;/company/
+  releases/&lt;release-id&gt;/pages/
+  state/m1.sqlite3
+  state/media/
+  secrets/                 # restricted service access
+  backups/                 # company backup policy
+  logs/
+</code></pre>
+<p>Set <code>M1_DB_PATH</code> and <code>M1_MEDIA_ROOT</code> to absolute paths under <code>state</code>, outside every release directory. Store the SSA key outside the release and set <code>APS_SSA_PRIVATE_KEY_PATH</code>. Keep the same production <code>DJANGO_SECRET_KEY</code> across routine updates. Both web and scheduled jobs must use the same production environment and database.</p>
+<p>Create a dedicated virtual environment per release. Never extract a new ZIP over the live release or replace the production database with a development copy. Only <code>/static/</code> should expose collected static assets; never expose the ZIP, source tree, private media directory, secrets, logs or database as a web directory.</p>
+<h2 id="first-installation">First installation</h2>
+<p>Run these from the extracted release root. <code>python</code> below must be the selected virtual environment's interpreter.</p>
+<pre><code class="language-text">python company/verify_package.py
+python -m venv .venv
+</code></pre>
+<p>Use <code>.venv/Scripts/python.exe</code> on Windows or <code>.venv/bin/python</code> on Linux for subsequent Python commands. Install dependencies through the company's approved Python mirror:</p>
+<pre><code class="language-text">python -m pip install -r company/requirements-tested.txt
+</code></pre>
+<p>For offline installation, IT should prepare a wheelhouse for the target OS, CPU and Python version, then use <code>--no-index --find-links=&lt;internal-wheelhouse&gt;</code>. Dependency installation is a build/maintenance step, not an application runtime connection.</p>
+<p>Configure all values in <code>company/.env.example</code> through the service manager/secret store. This file is documentation and is <strong>not automatically loaded</strong>. Use the actual hostname in <code>DJANGO_ALLOWED_HOSTS</code> and the same HTTPS origin in <code>M1_PUBLIC_URL</code>; keep <code>DJANGO_DEBUG=false</code>. Configure all four mail/write flags as false initially. Create the persistent media directory and copy the seeded organisation chart there once.</p>
+<pre><code class="language-text">python company/manage.py migrate --noinput
+python company/manage.py init_company
+python company/manage.py createsuperuser
+python company/manage.py collectstatic --noinput
+python company/manage.py check --deploy
+</code></pre>
+<p>The owner enters their own credential at <code>createsuperuser</code>; no default password is supplied. Resolve deployment-check findings for the actual hosting configuration.</p>
+<p>The local production-settings check reported only HSTS subdomain/preload warnings (W005/W021). These are left unset because the company's hostname and subdomain policy are unknown. IT should document its decision; do not enable a domain-wide policy or public preload submission automatically for an internal site.</p>
+<p>Register <code>&lt;M1_PUBLIC_URL&gt;/api/forma/callback</code> on the M1 editor-login APS application, then configure the M1 SSA's existing project membership and folder access. Read-only access supports data refresh. Membership provisioning, file uploads and tracker publication require the corresponding Autodesk permissions and separate application flags.</p>
+<pre><code class="language-text">python company/manage.py sync_roles
+python company/manage.py sync_project
+</code></pre>
+<p>An initial complete sync is required before the source-backed pages have data. No previous Cloudflare database or editor settings are imported by this package. Configure editors, duties and operational settings in <code>/owner/</code>; approved project data is fetched again from ACC.</p>
+<h2 id="web-service-and-scheduler">Web service and scheduler</h2>
+<p>From the release's <code>company/</code> directory, an example HTTPS-only reverse-proxy deployment is:</p>
+<pre><code class="language-text">waitress-serve --listen=127.0.0.1:8000 --url-scheme=https m1server.wsgi:application
+</code></pre>
+<p>The example assumes the reverse proxy is on the same server, accepts only HTTPS application traffic, and redirects HTTP before proxying. The backend must not be reachable directly by staff. Preserve the original Host header. If IT uses forwarded headers instead, explicitly trust only the known proxy and strip client-supplied forwarded headers. Also configure trusted client-IP forwarding for request rate limits; otherwise all users may appear as the proxy address. Do not set a wildcard trusted proxy.</p>
+<p>Serve <code>/static/</code> from the active release's <code>company/staticfiles/</code>; route all other paths to Django. Do not cache <code>/</code>, <code>/runtime-config.js</code>, APIs or authenticated pages. Support request sizes/timeouts and temporary disk capacity appropriate for model uploads; the application limit is 2 GB. The public URL, web service and static-files release must switch together on updates.</p>
+<p>Register <code>python company/manage.py run_jobs</code> every minute using the same interpreter, working directory and environment as the web service. Configure the scheduler to avoid overlapping instances. This performs queued refreshes and a five-minute refresh cadence, approved invitations and due mail. Reminders are Wednesday 14:00 Asia/Dubai and begin paused. Schedule Django <code>clearsessions</code> regularly as part of housekeeping. Capture service/scheduler errors without logging secrets or signed Autodesk URLs.</p>
+<h2 id="permitted-connections">Permitted connections</h2>
+<ul>
+<li>Staff browser to the internal dashboard over HTTPS; Autodesk sign-in and ACC links when requested.</li>
+<li>Backend HTTPS to <code>developer.api.autodesk.com</code> and <code>api.userprofile.autodesk.com</code>.</li>
+<li>Backend HTTPS to Autodesk-issued signed file-transfer storage endpoints; this implementation validates Amazon S3 hostnames ending in <code>.amazonaws.com</code>. These are part of Autodesk file transfer, not separate dashboard hosting. Agree the observed endpoints with IT's firewall policy.</li>
+<li>Backend to the company-approved SMTP relay and internal database, if used.</li>
+</ul>
+<p>No Google Fonts/CDN request, public Git repository, Cloudflare runtime or ChatGPT runtime is needed. User-added external hyperlinks remain ordinary links and should follow company policy.</p>
+<h2 id="go-live-acceptance">Go-live acceptance</h2>
+<p>In staging first, verify viewer navigation and source timestamps; MIDP Planned/Forecast/status fields and planned-date export; scoped tracker and checker results; owner sign-in; one approved Autodesk editor and one unapproved account; editor asset/discipline restrictions; and the organisation chart/media paths. Compare sampled results with the actual ACC source.</p>
+<p>Then test mail to a designated test recipient and owner approval notifications. With the project owner's explicit operational approval, test an agreed upload/version, tracker draft approval/publication and joiner invitation. Enable <code>M1_MAIL_ENABLED</code>, <code>M1_PROVISION_ENABLED</code>, <code>M1_UPLOAD_ENABLED</code> and <code>M1_TRACKER_WRITE_ENABLED</code> individually only for verified functions. Remove test recipients and resume reminders when the owner is ready. Do not process a staging copy of production's pending outbox or approved requests.</p>
+<p>Local validation covers 34 Django and 68 JavaScript tests. External mutations were mocked. Real company hosting, email, Autodesk writes and PostgreSQL are not yet verified. Mainland masterplan is not ready; Island asset points are not imported. Planned/Forecast and MACE_ACC_Status await the refreshed source MIDP. These source gaps should not be represented as populated results.</p>
+<p>The extracted release also passed its file manifest check and a Waitress production-settings smoke test for the dashboard and same-origin configuration. This is a local service check, not a company reverse-proxy or Autodesk integration test.</p>
+<h2 id="future-updates-no-external-hosting-required">Future updates — no external hosting required</h2>
+<p>Routine duties, links, editor permissions, reminder recipients, pause/resume, completeness rules and masterplans are edited through <code>/owner/</code>. ACC source changes are fetched by synchronization. Neither needs a code deployment.</p>
+<p>For software changes, IT can maintain <code>company/</code> and <code>pages/</code> in its internal repository, or receive a new versioned ZIP through an approved internal transfer. There is no requirement to give an external assistant access to the production server. Any future assistance must follow company policy for sharing source. Provide the current release ID and describe the change; never send secrets or production database backups.</p>
+<p><code>pages/</code> contains editable, unminified frontend modules. After direct frontend edits, run <code>python company/version_assets.py &lt;new-release-id&gt;</code> to refresh HTML and module cache tokens. The original development repository also supports <code>node build.cjs --company</code>; Node is a development-only option, not needed for packaged-source maintenance. Do not manually edit collected <code>staticfiles/</code>: those files are regenerated.</p>
+<p>Each release should include an ID, change list, dependency/migration notes, test results and a new integrity manifest. Keep source, infrastructure-specific settings and tests in the internal repository; keep runtime data and credentials outside it. Run backend tests against isolated staging/test settings, never with production mail/write flags or production job queues enabled.</p>
+<h3 id="installing-an-update">Installing an update</h3>
+<ol>
+<li>Verify the incoming manifest and release notes. Extract to a new versioned release directory. Install its tested dependencies into its own environment.</li>
+<li>Test in staging using separate state paths, secret, hostname and jobs. Keep all mail/write flags false until a designated staging test requires them. Use an isolated/sanitised data copy when appropriate; never connect staging to the live database.</li>
+<li>Schedule maintenance. Pause the scheduler, prevent new owner/editor writes, and let in-flight jobs finish. Record pending/uncertain external actions before stopping the old web service.</li>
+<li>Back up database, persistent media, configuration and the old release. For SQLite, stop all database-writing processes before a filesystem copy, or use a consistent SQLite backup facility. Include WAL state correctly if WAL is enabled. Use the database-native backup procedure for PostgreSQL.</li>
+<li>With the existing production state paths and secret, run from the <strong>new</strong> release:</li>
+</ol>
+<pre><code class="language-text">python company/manage.py migrate --plan
+python company/manage.py migrate --noinput
+python company/manage.py collectstatic --noinput
+python company/manage.py check --deploy
+</code></pre>
+<ol>
+<li>Switch the web service working directory/interpreter, static-file root and scheduler command to the new release. Start the web service and verify sign-in, content, snapshot reads and a representative filtered export. Do not create a new owner or replace the media seed on routine updates. Run <code>init_company</code> on updates only if that release's notes require it.</li>
+<li>Resume jobs, inspect a completed refresh, verify the owner/editor flow, and reopen writes. Keep the previous release and backup for the agreed rollback period. Record deployment time, operator, release hash, migration state and smoke-test result.</li>
+</ol>
+<h3 id="rollback-and-recovery">Rollback and recovery</h3>
+<p>Pause jobs and stop writes first. If the previous code is explicitly compatible with the migrated schema, switch code/static files/services back together. Otherwise restore the matched pre-update database and media backup with the previous release. Do not assume migrations can safely be reversed. A database restore loses changes made after the backup; agree the recovery point with the owner.</p>
+<p>An application rollback does not undo an Autodesk invitation, uploaded version, published workbook or delivered email. Reconcile those actions against ACC/mail records before resuming restored queues. Never blindly retry <code>provisioning</code>, <code>sending</code>, <code>publishing</code>, <code>verification_required</code> or <code>needs_attention</code> records. Read-only sync may be requeued only after confirming its old process is no longer running. Test the restore procedure in staging before production adoption.</p>
+<h2 id="reference-and-support">Reference and support</h2>
+<p>See <code>company/README.md</code> for feature details and <code>company/.env.example</code> for environment keys. Preserve the release manifest with each backup. Confirm the final URL, sender mailbox and IT support owner with Eslam before go-live.</p>
+<p>Deployment guidance follows the <a href="https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/">Django deployment checklist</a> and <a href="https://docs.pylonsproject.org/projects/waitress/en/stable/reverse-proxy.html">Waitress reverse-proxy documentation</a>. These are reference links, not runtime dependencies.</p></body></html>

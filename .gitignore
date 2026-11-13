@@ -8,3 +8,7 @@ pages/
 *.log
 preview-data.json
 private/
+company/private/
+company/staticfiles/
+__pycache__/
+*.pyc

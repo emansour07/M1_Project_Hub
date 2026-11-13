@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {checkSharedFiles} from '../checker.mjs';
+const mapping=[{section:'10.2',existing:'A48',proposed:'CRA'}],rules={pattern:'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]',fields:[{index:1,label:'Parcel',values:[{code:'FXX'}]}]};
+const name='M1-FXX-SAP-CRA-05-BM012-BNM-ZZ-000001';
+const file=(ext,extra={})=>({name:name+'.'+ext,source:'progress1',folderId:'folder-a',scopeId:'Island-A48',scopeName:'Gatehouse',folderPath:['Island','A48','Structure'],version:1,descriptionRead:true,description:'Model',...extra});
+test('Shared counterpart in another subfolder does not satisfy a pair',()=>{const rows=checkSharedFiles([file('rvt'),file('nwc',{folderId:'folder-b'})],mapping,rules);assert.equal(rows.length,2);assert.deepEqual(rows[0].missing,['nwc']);assert.deepEqual(rows[1].missing,['native']);});
+test('Shared checker highlights descriptions and ACC version differences',()=>{const [r]=checkSharedFiles([file('rvt'),file('nwc',{version:2,description:''})],mapping,rules);assert.equal(r.versionMismatch,true);assert.ok(r.issues.includes('Missing description'));assert.equal(r.documents[1].descriptionState,'Missing');});
+test('Unknown metadata never passes or becomes a missing description',()=>{const [r]=checkSharedFiles([file('rvt',{version:null,descriptionRead:false}),file('nwc')],mapping,rules);assert.equal(r.state,'Not fully checked');assert.ok(!r.issues.includes('Missing description'));});
+test('Checks all Shared documents but does not require model formats for a drawing PDF',()=>{const [r]=checkSharedFiles([file('pdf',{name:name.replace('-BNM-','-SDW-')+'.pdf',description:''}),file('rvt',{source:'review'})],mapping,rules);assert.equal(r.model,false);assert.deepEqual(r.missing,[]);assert.ok(r.issues.includes('Missing description'));});
+test('An ordinary DWG cannot satisfy the native model requirement',()=>{const [r]=checkSharedFiles([file('dwg'),file('nwc')],mapping,rules);assert.deepEqual(r.missing,['native']);});

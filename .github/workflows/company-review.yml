@@ -1,0 +1,39 @@
+name: Django company review
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: 'true'
+      DJANGO_SECRET_KEY: ci-validation-only-no-live-credentials
+      M1_MAIL_ENABLED: 'false'
+      M1_PROVISION_ENABLED: 'false'
+      M1_UPLOAD_ENABLED: 'false'
+      M1_TRACKER_WRITE_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: npm ci --ignore-scripts
+      - run: node --test tests/*.test.mjs
+      - run: node build.cjs --company
+      - run: python -m pip install -r company/requirements-tested.txt
+      - run: python company/manage.py test hub --verbosity 1
+      - run: python company/manage.py makemigrations --check --dry-run
+      - run: python company/manage.py check
+      - run: python company/package_company.py dist/M1_Company_Review.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: M1-company-review-${{ github.sha }}
+          path: dist/M1_Company_Review.zip
+          retention-days: 14

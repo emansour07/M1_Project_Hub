@@ -1,8 +1,12 @@
-name: Publish M1 dashboard
+name: Legacy public Pages deployment (manual only)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_legacy:
+        description: Explicitly publish the legacy Cloudflare-connected public frontend
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
   pages: write
@@ -12,6 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: inputs.publish_legacy == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
