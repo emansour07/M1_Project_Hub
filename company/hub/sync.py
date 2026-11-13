@@ -223,12 +223,15 @@ def review_data(client,scope,now):
 
 def synchronize():
     client=APS();knowledge,midp,tracker=sync_workbooks(client,persist=False);scope=knowledge['scope']['rows']
+    from .locations import location_data
+    locations=location_data(client,scope)
     files=crawl(client,scope);now=int(time.time()*1000)
     checks={'checkedAt':now,'rows':shared_checks(files,knowledge['mapping']['rows'],knowledge['mapping']['naming'])}
     progress=progress_data(files,tracker,midp,knowledge,now)
     originals=original_data(client,scope,files,now)
     reviews=review_data(client,scope,now)
     with transaction.atomic():
+        Snapshot.objects.update_or_create(key='locations',defaults={'data':locations})
         for key,value in [('knowledge',knowledge),('midp',midp),('checker',checks),('models',progress),('originals',originals),('snapshot',reviews),('tracker',tracker)]:Snapshot.objects.update_or_create(key=key,defaults={'data':value})
         # Only unambiguous, observed, in-scope Shared model folders become upload destinations.
         destinations={}

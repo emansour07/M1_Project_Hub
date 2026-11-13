@@ -144,10 +144,13 @@ class AssetHotspot(models.Model):
     x = models.FloatField(help_text='Horizontal position 0–100 percent')
     y = models.FloatField(help_text='Vertical position 0–100 percent')
     function = models.TextField(blank=True)
+    width = models.FloatField(default=5, help_text='Building width as a percentage of plan width')
+    height = models.FloatField(default=4, help_text='Building height as a percentage of plan height')
     class Meta:
         constraints=[models.UniqueConstraint(fields=['plan','asset_id'],name='one_asset_position_per_plan')]
     def clean(self):
         if not 0 <= self.x <= 100 or not 0 <= self.y <= 100: raise ValidationError('Positions must be between 0 and 100.')
+        if not 0 < self.width <= 100 or not 0 < self.height <= 100: raise ValidationError('Building dimensions must be between 0 and 100 percent.')
 
 class TrackerDraft(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

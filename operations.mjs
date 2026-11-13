@@ -1,5 +1,6 @@
+import {syncLocations} from './locations.mjs';
 import {downloadItemWorkbook} from './sources.mjs';
-import {zones,planState,savePlan,publicPlans} from './masterplans.mjs';
+import {zones,planState,savePlan,publicPlans,planAssets} from './masterplans.mjs';
 import {OperationsAPS} from './operations-aps.mjs';
 import {editorIdentity,canEditRow,digest} from './editor-auth.mjs';
 import {getScope,scopedFile} from './scope.mjs';
@@ -40,7 +41,8 @@ export async function operationsRoute(app,request,owner){const env=app.env,url=n
   const user=await editorIdentity(env,request,owner);if(!user)return json({error:'Sign in with your approved Autodesk email or owner code.'},401);
   if(path==='/api/operations/plan-source'&&method==='GET'&&owner)return json(await new OperationsAPS(env,['data:read']).planSource(url.searchParams.get('folder')));
   if(path==='/api/operations/plan-source-file'&&method==='GET'&&owner){const list=await new OperationsAPS(env,['data:read']).planSource(url.searchParams.get('folder')),file=list.rows.find(r=>r.id===url.searchParams.get('item')&&r.type==='items'&&/\.(pdf|png|jpe?g)$/i.test(r.name));if(!file)throw Error('Select a plan image or PDF from the supplied source.');const d=await downloadItemWorkbook(env,file.id);return new Response(d.bytes,{headers:{'Content-Type':/\.pdf$/i.test(file.name)?'application/pdf':/\.png$/i.test(file.name)?'image/png':'image/jpeg','Content-Disposition':'attachment; filename="'+file.name.replace(/[^A-Za-z0-9._-]/g,'_')+'"'}});}
-  if(path==='/api/operations/masterplans'&&method==='GET'&&owner)return json({plans:await Promise.all(zones.map(z=>planState(env,z))),assets:(await getScope(env))?.rows||[]});
+  if(path==='/api/operations/locations'&&method==='POST'&&owner)return json(await syncLocations(env));
+  if(path==='/api/operations/masterplans'&&method==='GET'&&owner)return json({plans:await Promise.all(zones.map(z=>planState(env,z))),assets:planAssets(await getScope(env))});
   if(path==='/api/operations/masterplans'&&method==='PUT'&&owner)return json(await savePlan(env,JSON.parse(new TextDecoder().decode(await body(request,1600000)))));
   if(path==='/api/operations/admin'&&method==='GET'&&owner)return json({user,roles:await read(env,'m1/project-roles',{roles:[]}),requests:store.list('access'),uploads:store.list('upload').map(({storage,uploadKey,...r})=>r),destinations:await read(env,'m1/upload-destinations',{revision:0,rows:[]}),candidates:await candidates(env),orgchart:!!await read(env,'m1/orgchart',null),notificationEmail:'eslam.mansour@arx.ing',mailConnected:false});
   if(path==='/api/operations/roles'&&method==='POST'&&owner)return json(await syncProjectRoles(env));

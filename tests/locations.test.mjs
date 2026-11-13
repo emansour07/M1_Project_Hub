@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {parseLocations} from '../locations.mjs';
+const header=['Key asset Code','Site Location as per','E/W','N/S','Elevation','True North'];
+const scope={rows:[{id:'Island-A33',zone:'Island',code:'A33',name:'Accommodation'},{id:'Island-A51',zone:'Island',code:'A51',name:'Substation'}]};
+test('shared coordinates preserve original values, zero and unknown units; filter outside scope',()=>{const data=parseLocations([header,['A33','Island',308701958.8,2761990624.4,5750,0],['A33','Mainland',1,2,3,4],['OTHER','Island',1,2,3,4],['A51','Island','NO AVAILABLE MODEL',null,null,null]],scope);assert.equal(data.length,2);assert.equal(data[0].east,308701958.8);assert.equal(data[0].elevation,5750);assert.equal(data[0].trueNorth,0);assert.equal(data[0].units,'unconfirmed');assert.equal(data[1].east,null);assert.equal(data[1].note,'NO AVAILABLE MODEL');});
+test('ambiguous or changed location schedules are rejected',()=>{assert.throws(()=>parseLocations([['wrong heading']],scope));assert.throws(()=>parseLocations([header,['A33','Island',1,2,3,4],['A33','Island',1,2,3,4]],scope),/Duplicate/);});

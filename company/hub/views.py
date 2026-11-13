@@ -151,8 +151,12 @@ def sharing(req):
 
 @require_GET
 def masterplans(req):
+    locations_snapshot=Snapshot.objects.filter(key='locations').first()
+    locations=locations_snapshot.data if locations_snapshot else {'rows':[],'source':None}
     scope = Snapshot.objects.filter(key='knowledge').first()
-    allowed = {r['id'] for r in (scope.data.get('scope',{}).get('rows',[]) if scope else [])}
+    from .plan_assets import plan_assets
+    visual_assets=plan_assets(scope.data.get('scope',{}).get('rows',[]) if scope else [])
+    allowed = {r['id'] for r in visual_assets}
     entries = (Snapshot.objects.filter(key='midp').first())
     entries = entries.data.get('entries',[]) if entries else []
     from .completeness import calculate
@@ -162,17 +166,19 @@ def masterplans(req):
     for p in Masterplan.objects.filter(approved=True):
         rows=[]
         for h in p.hotspots.filter(asset_id__in=allowed):
+            visual=next(a for a in visual_assets if a['id']==h.asset_id)
             deliverables = [e for e in entries if e.get('scopeId')==h.asset_id]
             phases = sorted({e.get('projectStage') for e in deliverables if e.get('projectStage')})
-            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'function':h.function,
+            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'width':h.width,'height':h.height,'function':h.function,'contextOnly':visual.get('contextOnly',False),'party':visual.get('party'),
                 'phases':phases,'models':sum(e.get('category')=='Models' for e in deliverables),'drawings':sum(e.get('category')=='Drawings' for e in deliverables),
-                'completeness':scores.get(h.asset_id,{}).get('percentage'),'approval':scores.get(h.asset_id)})
+                'completeness':scores.get(h.asset_id,{}).get('percentage'),'approval':scores.get(h.asset_id),
+                'location':next((r for r in locations['rows'] if r['id']==h.asset_id),None)})
         wide=[]
         for a in scope.data.get('scope',{}).get('rows',[]) if scope else []:
             if a.get('zone')==p.zone and a.get('code','').startswith('EW-'):
                 wide.append({'name':a['name'],'code':a['code'],'scopeId':a['id'],'approval':scores.get(a['id'])})
         result.append({'zone':p.zone,'title':p.title,'image':'/api/masterplans/'+str(p.id)+'/image','sourceUrl':p.source_url,'assets':rows,'wideScope':wide})
-    return JsonResponse({'plans':result})
+    return JsonResponse({'plans':result,'locations':locations})
 
 @require_GET
 def plan_image(req,ident):
@@ -184,15 +190,16 @@ def plan_image(req,ident):
 def map_editor(req,ident):
     p = get_object_or_404(Masterplan,pk=ident)
     scope = Snapshot.objects.filter(key='knowledge').first()
-    assets = [a for a in (scope.data.get('scope',{}).get('rows',[]) if scope else []) if a.get('zone')==p.zone and not a.get('code','').startswith('EW-')]
+    from .plan_assets import plan_assets
+    assets = [a for a in plan_assets(scope.data.get('scope',{}).get('rows',[]) if scope else []) if a.get('zone')==p.zone and not a.get('code','').startswith('EW-')]
     error = None
     if req.method == 'POST':
         try:
             a = next((a for a in assets if a['id']==req.POST.get('asset')),None)
             if not a: raise ValueError('Choose an asset from the approved M1 scope.')
-            h = AssetHotspot(plan=p,asset_id=a['id'],name=a['name'],code=a.get('proposed') or a.get('code',''),x=float(req.POST['x']),y=float(req.POST['y']),function=req.POST.get('function',''))
+            h = AssetHotspot(plan=p,asset_id=a['id'],name=a['name'],code=a.get('proposed') or a.get('code',''),x=float(req.POST['x']),y=float(req.POST['y']),width=float(req.POST.get('width',5)),height=float(req.POST.get('height',4)),function=req.POST.get('function',''))
             h.full_clean()
-            AssetHotspot.objects.update_or_create(plan=p,asset_id=a['id'],defaults={k:getattr(h,k) for k in ['name','code','x','y','function']})
+            AssetHotspot.objects.update_or_create(plan=p,asset_id=a['id'],defaults={k:getattr(h,k) for k in ['name','code','x','y','width','height','function']})
         except Exception: error = 'Select an asset and click a valid position on the plan.'
     return render(req,'hub/map_editor.html',{'plan':p,'assets':assets,'error':error})
 
