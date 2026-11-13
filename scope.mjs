@@ -71,7 +71,7 @@ export async function pruneScopeCache(env,limit=500){
  let checked=0,removed=0;
  for(const table of ['progress_files','format_files']){
   if(!env.SQL.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?",table).toArray().length)continue;
-  const stateKey=table==='progress_files'?'m1/progress/state':'m1/formats/state',state=await(await env.BUCKET.get(stateKey))?.json();if(state){const queue=table==='progress_files'?'progress_queue':'format_queue';env.SQL.exec('DELETE FROM '+queue+' WHERE generation<>?',state.active?state.generation:'');env.SQL.exec('DELETE FROM '+table+' WHERE generation<>? AND generation<>?',state.published||'',state.active?state.generation:'');}
+  const stateKey=table==='progress_files'?'m1/progress/state':'m1/formats/state',state=await(await env.BUCKET.get(stateKey))?.json();if(state){const queue=table==='progress_files'?'progress_queue':'format_queue';env.SQL.exec('DELETE FROM '+queue+' WHERE generation<>?',(state.active||state.retryGeneration)?state.generation:'');env.SQL.exec('DELETE FROM '+table+' WHERE generation<>? AND generation<>?',state.published||'',(state.active||state.retryGeneration)?state.generation:'');}
   const marker='m1/scope-prune/'+table,old=await(await env.BUCKET.get(marker))?.json(),cursor=old?.version===policy.revision?old.cursor:0;
   const batch=env.SQL.exec('SELECT rowid,body FROM '+table+' WHERE rowid>? ORDER BY rowid LIMIT ?',cursor,limit).toArray();
   for(const r of batch){const f=scopedFile(JSON.parse(r.body),policy);if(!f){env.SQL.exec('DELETE FROM '+table+' WHERE rowid=?',r.rowid);removed++;}else env.SQL.exec('UPDATE '+table+' SET body=? WHERE rowid=?',JSON.stringify(f),r.rowid);checked++;}

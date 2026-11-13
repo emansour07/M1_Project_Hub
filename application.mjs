@@ -1,4 +1,5 @@
 import {receivedSnapshot,validateReceived} from './received.mjs';
+import {syncNextWorkbook} from './workbook-schedule.mjs';
 import {operationsRoute} from './operations.mjs';
 import {reminderSettings,saveReminderSettings} from './reminders.mjs';
 import {RequirementsStore,schema,permitted} from './requirements.mjs';
@@ -314,6 +315,15 @@ export class M1Application {
 
  }
 
- async tick(){if(this.env.FORMA_SYNC_ENABLED!=='true')return;await syncOriginals(this.env).catch(()=>{});await pruneScopeCache(this.env,500).catch(()=>{});const scopeSource=await workbookSnapshot(this.env,'scope'),policy=await getScope(this.env);if(scopeSource&&scopeSource.source.version!==policy?.source.version)await syncWorkbook(this.env,'tidp').catch(()=>{});if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});await syncModelSources(this.env).catch(()=>{});for(const key of ['scope','tidp','tracker','midp']){const saved=await workbookSnapshot(this.env,key);if(!saved||Date.now()-saved.source.checkedAt>900000){await syncWorkbook(this.env,key).catch(()=>{});break;}}}
+ async tick(){
+  if(this.env.FORMA_SYNC_ENABLED!=='true')return;
+  await syncOriginals(this.env).catch(()=>{});
+  await pruneScopeCache(this.env,500).catch(()=>{});
+  const scopeSource=await workbookSnapshot(this.env,'scope'),policy=await getScope(this.env);
+  if(scopeSource&&scopeSource.source.version!==policy?.source.version)await syncWorkbook(this.env,'tidp').catch(()=>{});
+  if(this.env.REVIEWS_ACCESS_VERIFIED==='true')await syncForma(this.env,stored,validateSnapshot).catch(()=>{});
+  // Folder batches run in a separate alarm invocation with their own request budget.
+  await syncNextWorkbook(this.env).catch(()=>{});
+ }
 
 }

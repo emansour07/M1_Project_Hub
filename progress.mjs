@@ -5,6 +5,7 @@ import {sources} from './sources.mjs';
 import {folderPath,nextPath} from './models.mjs';
 import {buildProgress} from './progress-core.mjs';
 import {workbookSnapshot} from './workbooks.mjs';
+import {scanDueAt,selectScan} from './model-schedule.mjs';
 const key='m1/progress/state';
 function init(sql){
  sql.exec('CREATE TABLE IF NOT EXISTS progress_queue (generation TEXT, source TEXT, path TEXT, task TEXT, done INTEGER DEFAULT 0, PRIMARY KEY(generation,source,path))');
@@ -24,7 +25,7 @@ export async function progressSnapshot(env){
  const policy=await getScope(env),audit=await formatSnapshot(env),combined=(audit?[...files.filter(f=>f.source==='reference'),...audit.files]:files).map(f=>scopedFile(f,policy)).filter(Boolean);
  return {formatCheckedAt:audit?.checkedAt||null,scan:buildProgress(combined,mapping?.rows||[],tracker?.rows||[],s.checkedAt,Date.now(),midp?.rows||[]),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,baselineSource:midp?.source||null,checking:{active:!!s.active,failed:!!s.error}};
 }
-export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken){
+export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken,maxReads=18){
  const sql=env.SQL;init(sql);let s=await state(env),activeTask=null;const now=Date.now();if(s.leaseUntil>now)return {updating:true};
  if(s.active&&s.batchNotBefore>now)return {updating:true,retryAfterMs:s.batchNotBefore-now};
  if(s.lastFailure?.status===429&&s.nextAt>now)return {updating:true,retryAfterMs:s.nextAt-now};
@@ -41,9 +42,9 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
    await save(env,s);
   }
   if(now-s.startedAt>12*3600000)throw Error('Folder check expired.');
-  const token=await getToken(env),policy=await getScope(env);let count=0;
-  while(count<18){
-   const batch=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT ?',s.generation,Math.min(3,18-count)).toArray();if(!batch.length)break;
+  const token=await getToken(env),policy=await getScope(env);let count=0;const limit=Math.min(36,Math.max(1,Math.floor(maxReads)||18));
+  while(count<limit){
+   const batch=sql.exec('SELECT path,source,task FROM progress_queue WHERE generation=? AND done=0 LIMIT ?',s.generation,Math.min(3,limit-count)).toArray();if(!batch.length)break;
    // Read independent folders in groups of three; persist their results sequentially.
    const results=await Promise.allSettled(batch.map(async row=>{const task=JSON.parse(row.task);try{if(task.trail.some((name,i)=>!visitScopeFolder(name,task.trail.slice(0,i),policy)))return {task,page:{data:[]}};return {task,page:await readApi(task.path,token)};}catch(e){e.folderTask=task;throw e;}}));count+=batch.length;
    let failure=null;
@@ -82,4 +83,16 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
  finally{s.leaseUntil=0;await save(env,s);}
 }
 
-export async function syncModelSources(env,manual=false){const s=await formatState(env);if(s.active||!s.published||!s.nextAt||s.nextAt<=Date.now())return syncFormats(env);return syncProgress(env,manual);}
+export async function nextModelSyncAt(env){
+ const now=Date.now(),states={formats:await formatState(env),progress:await state(env)};
+ return Math.min(...Object.entries(states).map(([kind,s])=>scanDueAt(kind,s,now)));
+}
+export async function syncModelSources(env,manual=false,maxReads=18,run={progress:syncProgress,formats:syncFormats}){
+ const states={formats:await formatState(env),progress:await state(env)};
+ const last=await(await env.BUCKET.get('m1/model-schedule/last-scan'))?.json();
+ const selected=selectScan(states,last,Date.now(),manual);
+ if(!selected)return {skipped:true};
+ // Persist before the provider call so a failed scan cannot block the other scan.
+ await env.BUCKET.put('m1/model-schedule/last-scan',JSON.stringify(selected));
+ return selected==='progress'?run.progress(env,manual,undefined,undefined,maxReads):run.formats(env,undefined,undefined,maxReads);
+}

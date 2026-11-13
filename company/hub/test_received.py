@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from .models import Snapshot
-from .received import validate,compare,model_key
+from .received import validate,compare,model_key,retain_reference
 class ReceivedTests(TestCase):
     def setUp(self):
         self.asset={'id':'Island-A33','code':'A33','name':'Accommodation','zone':'Island','parcel':'102','aliases':['A33','US1'],'ambiguous':[],'proposed':'US1'}
@@ -27,3 +27,16 @@ class ReceivedTests(TestCase):
         self.data['rows'].append({**self.row,'id':'p1','scopeId':'pending','name':self.row['name'].replace('-A33-','-XXX-'),'assetAssignmentPending':True})
         data=validate(self.data,[self.asset]);rows=compare(data['rows'],[],1)
         self.assertEqual(len(rows),2);self.assertEqual(rows[1]['status'],'Asset assignment pending');self.assertIsNone(rows[1]['accFormats']);self.assertEqual(rows[1]['formats']['native']['state'],'Not checked')
+
+    def test_reference_sync_updates_receipts_without_changing_imported_expectations(self):
+        baseline=validate(self.data,[self.asset])
+        Snapshot.objects.create(key='received-input',data=baseline)
+        model={'id':'uploaded','source':'reference','scopeId':'Island-A33','folderId':'island','name':self.row['name'].replace('BNM/BGM','BNM')+'-R01.rvt'}
+        for files in [[],[model],[]]:
+            retain_reference(files,[self.asset],456)
+            result=self.client.get('/api/received').json()
+            matches=result['rows'][0]['formats']['native']['matches']
+            self.assertEqual(len(matches),len(files))
+            if matches:self.assertEqual(matches[0]['folderId'],'island')
+            self.assertEqual(result['sourceCheckedAt'],123)
+            self.assertEqual(Snapshot.objects.get(key='received-input').data,baseline)
