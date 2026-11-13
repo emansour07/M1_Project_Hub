@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.urls import path
 from django.shortcuts import redirect
-from hub import views, auth, requirements, companies
+from hub import views, auth, requirements, companies, received
 
 urlpatterns = [
+    path('admin/received',received.workspace),
+    path('api/received/import',received.import_analysis),
+    path('api/received',received.public),
     path('', views.dashboard),
     path('runtime-config.js',views.config),
     path('assets/forma.ico',lambda r:redirect('/static/assets/forma.ico')),

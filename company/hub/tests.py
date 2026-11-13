@@ -102,6 +102,18 @@ class CompanyAssignmentTests(TestCase):
         self.assertEqual(Snapshot.objects.get(key='knowledge').data['scope']['rows'][0]['party'],'ARX')
 
 class OrganisationAnchorTests(TestCase):
+    def test_rotated_connector_joins_technical_manager_to_discipline_header(self):
+        from .orgchart import connector_points
+        from defusedxml.ElementTree import fromstring
+        transform=fromstring('<xfrm rot="5400000" flipH="1" flipV="1"/>')
+        geom=fromstring('<prstGeom xmlns="http://schemas.openxmlformats.org/drawingml/2006/main" prst="bentConnector3"><avLst><gd name="adj1" fmla="val 13703"/></avLst></prstGeom>')
+        points=connector_points((200.66656,152.4001,391.26667,201.06667),transform,geom)
+        self.assertAlmostEqual(points[0][0],200.66656)
+        self.assertAlmostEqual(points[0][1],353.46677)
+        self.assertAlmostEqual(points[-1][0],591.93323)
+        self.assertAlmostEqual(points[-1][1],152.4001)
+        self.assertAlmostEqual(points[1][1],points[2][1])
+
     def test_current_cell_anchors_override_obsolete_drawing_offsets(self):
         from .orgchart import anchor_bounds
         from defusedxml.ElementTree import fromstring

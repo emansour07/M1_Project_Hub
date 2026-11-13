@@ -89,6 +89,14 @@ Autodesk implementation references:
 
 ## Interim release — 13 November 2026
 
+### Original-design receipt analysis update
+
+The **Original design** tab reads scoped expectations from `M1_Models_Received.xlsx`, including HES, PAR, received-only and SAP entries. Matching formats and revisions count as one model; the displayed workbook name stays unchanged. The ACC reference scan supplies file links and receipt evidence. A workbook “Yes” or a source-folder match alone never counts as an ACC receipt. Only confirmed scoped assets are retained; Other Assets is excluded.
+
+For company hosting, first synchronize scope, then run `python company/manage.py import_received /path/to/M1_Models_Received.xlsx` and `python company/manage.py sync_m1`. The import opens Excel read-only and never saves it. Source-file discovery/copy is a separate operator task; the server does not crawl arbitrary local or SharePoint paths from spreadsheet hyperlinks. Owners can also publish a prepared, scoped analysis at `/admin/received`; the endpoint strips local paths and rechecks current scope. Anonymous visitors can view the results but cannot import them.
+
+On the interim host, the Original design Refresh button advances the reference scan in bounded batches. Until a full scan finishes, the last complete result and its timestamp remain visible. The receipt baseline, org-chart SVG, masterplan media and company assignments are operational data outside Git. Migrate them through the owner controls/commands before the company cutover. The org-chart renderer now respects current cell anchors, connector rotations, flips and elbow adjustments.
+
 The existing GitHub Pages / Cloudflare deployment remains active until internal hosting is ready. Owner identity now uses eslam.mansour@arx.ing. The Cloudflare owner controls include project-role access requests, confirmed upload destinations, organisation-chart publication and a visual masterplan editor. Model uploads transfer in 8 MB parts (512 MB per file maximum on the interim host). Company Django uploads retain their separately documented 2 GB limit.
 
 If every approval value for an asset is blank, completeness stays unscored; once statuses are present, blank documents remain in the denominator. The current live MIDP v2 has 3,900 scoped rows and no filled Planned, Forecast or MACE_ACC_Status values.

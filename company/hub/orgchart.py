@@ -42,6 +42,30 @@ def anchor_bounds(anchor,sheet):
     x,y=point(start);right,bottom=point(end)
     return x,y,right-x,bottom-y
 
+def connector_points(bounds, transform, geom):
+    """Transform preset connector geometry into its current cell-anchor bounds."""
+    x,y,w,h=bounds
+    angle=int(transform.get('rot','0'))/60000
+    quarter=round(angle/90)%2==1
+    width,height=(h,w) if quarter else (w,h)
+    kind=geom.get('prst','') if geom is not None else ''
+    adjustment=0.5
+    if geom is not None:
+        for gd in geom.findall('a:avLst/a:gd',NS):
+            if gd.get('name')=='adj1' and gd.get('fmla','').startswith('val '):
+                adjustment=float(gd.get('fmla').split()[1])/100000
+    if kind=='bentConnector2':points=[(0,0),(width,0),(width,height)]
+    elif kind=='bentConnector3':points=[(0,0),(width*adjustment,0),(width*adjustment,height),(width,height)]
+    else:points=[(0,0),(width,height)]
+    radians=math.radians(angle);c,s=math.cos(radians),math.sin(radians)
+    result=[]
+    for px,py in points:
+        if transform.get('flipH')=='1':px=width-px
+        if transform.get('flipV')=='1':py=height-py
+        px-=width/2;py-=height/2
+        result.append((x+w/2+px*c-py*s,y+h/2+px*s+py*c))
+    return result
+
 def render_orgchart(source):
     with zipfile.ZipFile(source) as z:
         info = z.getinfo('xl/drawings/drawing1.xml')
@@ -69,13 +93,10 @@ def render_orgchart(source):
         colour = props.find('a:ln/a:solidFill/a:srgbClr',NS)
         stroke = '#'+colour.get('val') if colour is not None else '#909090'
         if connector:
-            x1,x2 = (x+w,x) if transform.get('flipH')=='1' else (x,x+w)
-            y1,y2 = (y+h,y) if transform.get('flipV')=='1' else (y,y+h)
             dash = ' stroke-dasharray="5 4"' if props.find('a:ln/a:prstDash',NS) is not None else ''
             geom = props.find('a:prstGeom',NS)
-            if geom is not None and geom.get('prst','').startswith('bentConnector'):
-                path = f'M{x1},{y1} H{(x1+x2)/2} V{y2} H{x2}'
-            else: path = f'M{x1},{y1} L{x2},{y2}'
+            points=connector_points((x,y,w,h),transform,geom)
+            path=' '.join(('M' if i==0 else 'L')+f'{px:.4f},{py:.4f}' for i,(px,py) in enumerate(points))
             lines.append(f'<path d="{path}" stroke="{stroke}" fill="none"{dash}/>')
             continue
         paragraphs = [''.join(p.itertext()) for p in []]

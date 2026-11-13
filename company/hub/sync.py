@@ -231,6 +231,8 @@ def synchronize():
     originals=original_data(client,scope,files,now)
     reviews=review_data(client,scope,now)
     with transaction.atomic():
+        from .received import retain_reference
+        retain_reference(files,scope,now)
         Snapshot.objects.update_or_create(key='locations',defaults={'data':locations})
         for key,value in [('knowledge',knowledge),('midp',midp),('checker',checks),('models',progress),('originals',originals),('snapshot',reviews),('tracker',tracker)]:Snapshot.objects.update_or_create(key=key,defaults={'data':value})
         # Only unambiguous, observed, in-scope Shared model folders become upload destinations.
