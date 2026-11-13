@@ -21,3 +21,9 @@ class ReceivedTests(TestCase):
         self.client.logout();self.assertEqual(len(self.client.get('/api/received').json()['rows']),1)
         Snapshot.objects.filter(key='knowledge').update(data={'scope':{'rows':[]}})
         self.assertEqual(self.client.get('/api/received').json()['rows'],[])
+
+    def test_reviewed_unassigned_models_are_not_counted_as_missing(self):
+        self.data['scopeReviewed']=True
+        self.data['rows'].append({**self.row,'id':'p1','scopeId':'pending','name':self.row['name'].replace('-A33-','-XXX-'),'assetAssignmentPending':True})
+        data=validate(self.data,[self.asset]);rows=compare(data['rows'],[],1)
+        self.assertEqual(len(rows),2);self.assertEqual(rows[1]['status'],'Asset assignment pending');self.assertIsNone(rows[1]['accFormats']);self.assertEqual(rows[1]['formats']['native']['state'],'Not checked')

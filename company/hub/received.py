@@ -15,7 +15,7 @@ def model_key(name,scope_id):
     base=re.sub(r'[.-](RVT|DWG|NWC|IFC|DWFX)$','',name.strip().upper()).rstrip('-')
     p=re.sub(r'-R\d+$','',base).split('-')
     if len(p)!=9 or p[0]!='M1':return None
-    p[1]='SCOPE';p[3]=scope_id
+    if scope_id!='pending':p[1]='SCOPE';p[3]=scope_id
     if p[2]=='ARX':p[2]='SAP'
     if p[6] in ['BNM/BGM','BNM','BGM']:p[6]='BNM'
     return '-'.join(p)
@@ -37,8 +37,10 @@ def validate(data,scope):
     for r in data['rows']:
         if not isinstance(r,dict) or any(not isinstance(r.get(k),str) or len(r[k])>1000 for k in ['id','name','description','source','discipline','revision','scopeId']) or not model_key(r['name'],r['scopeId']) or r['id'] in ids:raise ValueError('Invalid or repeated model entry.')
         ids.add(r['id']);a=asset(r,scope)
+        pending=not a and data.get('scopeReviewed') is True and r.get('assetAssignmentPending') is True and r['scopeId']=='pending'
+        if pending:a={'id':'pending','code':'Unassigned','name':'Asset assignment pending','zone':'Area to confirm'}
         if not a or a['id']!=r['scopeId']:continue
-        rows.append({**{k:r[k] for k in ['id','name','description','source','discipline','revision','scopeId']},'asset':a.get('proposed') or a['code'],'assetName':a['name'],'zone':a['zone'],
+        rows.append({**{k:r[k] for k in ['id','name','description','source','discipline','revision','scopeId']},'asset':a.get('proposed') or a['code'],'assetName':a['name'],'zone':a['zone'],'assetAssignmentPending':pending,
             'formats':{f:{'sourceAvailable':r.get('formats',{}).get(f,{}).get('sourceAvailable') is True,'workbookReceived':r.get('formats',{}).get(f,{}).get('workbookReceived') is True} for f in FORMATS}})
     if not rows:raise ValueError('No confirmed scoped models were found.')
     return {'sourceName':'M1_Models_Received.xlsx','sourceCheckedAt':data['sourceCheckedAt'],'importedAt':int(time.time()*1000),'rows':rows}
@@ -59,6 +61,9 @@ def compare(rows,files,checked):
             formats[fmt]={**f,'matches':matches,'state':state}
         n=sum(bool(f['matches']) for f in formats.values());source=any(f['sourceAvailable'] for f in formats.values())
         status='Not checked' if not checked else 'All formats in ACC' if n==4 else 'Partial in ACC' if n else 'Source only' if source else 'Not found in ACC'
+        if r.get('assetAssignmentPending'):
+            n=None;status='Asset assignment pending'
+            for f in formats.values():f['matches']=[];f['state']='Not checked'
         result[key]={**r,'key':key,'source':[r['source']],'formats':formats,'accFormats':n,'status':status}
     return list(result.values())
 def retain_reference(files,scope,now):
@@ -85,5 +90,5 @@ def import_analysis(req):
 @require_GET
 def public(req):
     data=read('received-input',{});reference=read('received-reference',{});scope=read('knowledge',{}).get('scope',{}).get('rows',[])
-    rows=[r for r in data.get('rows',[]) if (asset(r,scope) or {}).get('id')==r['scopeId']]
+    rows=[r for r in data.get('rows',[]) if r.get('assetAssignmentPending') or (asset(r,scope) or {}).get('id')==r['scopeId']]
     return JsonResponse({'sourceName':data.get('sourceName','M1_Models_Received.xlsx'),'sourceCheckedAt':data.get('sourceCheckedAt'),'checkedAt':reference.get('checkedAt'),'checking':False,'rows':compare(rows,reference.get('files',[]),reference.get('checkedAt'))})

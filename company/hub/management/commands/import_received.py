@@ -7,7 +7,9 @@ from hub.received import read,asset,validate
 
 class Command(BaseCommand):
     help='Read M1_Models_Received.xlsx and import scoped original-model expectations; never modifies Excel.'
-    def add_arguments(self,parser):parser.add_argument('workbook')
+    def add_arguments(self,parser):
+        parser.add_argument('workbook')
+        parser.add_argument('--scope-reviewed',action='store_true',help='Owner confirms the entire workbook is in scope; retain unresolved asset assignments separately.')
     def handle(self,*args,**options):
         knowledge=read('knowledge',{});scope=knowledge.get('scope',{}).get('rows',[])
         if not scope:raise CommandError('Synchronize the approved scope before importing the receipt workbook.')
@@ -22,9 +24,9 @@ class Command(BaseCommand):
                 if not c[0].startswith('M1-'):continue
                 row={'id':'received-'+str(number),'name':c[0],'description':c[1],'source':c[2],'revision':c[5],'discipline':labels.get(c[0].split('-')[5],'Unclassified')}
                 match=asset(row,scope)
-                if not match:continue
-                row['scopeId']=match['id'];row['formats']={f:{'sourceAvailable':False,'workbookReceived':c[6+2*i]=='Yes'} for i,f in enumerate(['native','nwc','ifc','dwfx'])};rows.append(row)
-            data=validate({'sourceCheckedAt':int(time.time()*1000),'rows':rows},scope)
+                if not match and not options['scope_reviewed']:continue
+                row['scopeId']=match['id'] if match else 'pending';row['assetAssignmentPending']=not bool(match);row['formats']={f:{'sourceAvailable':False,'workbookReceived':c[6+2*i]=='Yes'} for i,f in enumerate(['native','nwc','ifc','dwfx'])};rows.append(row)
+            data=validate({'sourceCheckedAt':int(time.time()*1000),'rows':rows,'scopeReviewed':options['scope_reviewed']},scope)
             Snapshot.objects.update_or_create(key='received-input',defaults={'data':data})
             self.stdout.write(f"Imported {len(data['rows'])} scoped entries. Excel unchanged. Run sync_m1 to reconcile ACC files.")
         finally:book.close()
