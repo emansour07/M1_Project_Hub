@@ -83,3 +83,28 @@ class PermissionTests(TestCase):
         u={'owner':False,'assets':['a'],'disciplines':['Structure']}
         self.assertTrue(allowed(u,'a','Structure'));self.assertFalse(allowed(u,'b','Structure'));self.assertFalse(allowed(u,'a','Architecture'))
         self.assertFalse(allowed(None,'a','Structure'))
+class CompanyAssignmentTests(TestCase):
+    def setUp(self):
+        from .companies import defaults
+        self.config=defaults()
+        Snapshot.objects.create(key='knowledge',data={'scope':{'rows':[{'id':a['assetId'],'zone':'Island','code':a['assetId'].split('-')[1],'party':'ARX','name':'Test asset'} for a in self.config['assignments']]}})
+        self.owner=get_user_model().objects.create_superuser('company-owner','owner@example.com','local-test-password')
+    def test_public_read_but_owner_only_write(self):
+        self.assertEqual(self.client.get('/api/companies').status_code,200)
+        self.assertEqual(self.client.put('/api/operations/companies',self.config,content_type='application/json').status_code,401)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.put('/api/operations/companies',self.config,content_type='application/json').status_code,200)
+        self.assertEqual(self.client.put('/api/operations/companies',self.config,content_type='application/json').status_code,409)
+    def test_unknown_assets_and_colours_rejected_and_baseline_unchanged(self):
+        self.client.force_login(self.owner)
+        self.config['companies'][0]['color']='red;display:none'
+        self.assertEqual(self.client.put('/api/operations/companies',self.config,content_type='application/json').status_code,400)
+        self.assertEqual(Snapshot.objects.get(key='knowledge').data['scope']['rows'][0]['party'],'ARX')
+
+class OrganisationAnchorTests(TestCase):
+    def test_current_cell_anchors_override_obsolete_drawing_offsets(self):
+        from .orgchart import anchor_bounds
+        from defusedxml.ElementTree import fromstring
+        anchor=fromstring('<twoCellAnchor xmlns="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><from><col>2</col><colOff>9525</colOff><row>3</row><rowOff>0</rowOff></from><to><col>4</col><colOff>9525</colOff><row>5</row><rowOff>0</rowOff></to></twoCellAnchor>')
+        sheet=fromstring('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetFormatPr defaultColWidth="10.7109375" defaultRowHeight="15"/></worksheet>')
+        self.assertEqual(anchor_bounds(anchor,sheet),(161,60,160,40))

@@ -1,3 +1,5 @@
+import {companySettings,saveCompanies} from './companies.mjs';
+import {divisionScope,responsibilityFor} from './division-scope.mjs';
 import {syncLocations} from './locations.mjs';
 import {downloadItemWorkbook} from './sources.mjs';
 import {zones,planState,savePlan,publicPlans,planAssets} from './masterplans.mjs';
@@ -28,6 +30,8 @@ async function candidates(env){const [audit,policy]=await Promise.all([formatSna
 async function body(request,max=50000){const reader=request.body?.getReader();if(!reader)throw Error('No data supplied.');let n=0,parts=[];for(;;){const {value,done}=await reader.read();if(done)break;n+=value.length;if(n>max){await reader.cancel();throw Error('The request is too large.');}parts.push(value);}const out=new Uint8Array(n);let pos=0;for(const p of parts){out.set(p,pos);pos+=p.length;}return out;}
 const payload=async r=>JSON.parse(new TextDecoder().decode(await body(r)));
 export async function operationsRoute(app,request,owner){const env=app.env,url=new URL(request.url),path=url.pathname,method=request.method;
+ if(path==='/api/companies'&&method==='GET')return json(await companySettings(env));
+ if(path==='/admin/companies'&&method==='GET')return owner?new Response(app.templates.companyEditorHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}}):new Response(null,{status:303,headers:{Location:'/admin/login'}});
  if(!['/sharing','/access-request','/admin/operations','/api/orgchart/image','/api/masterplans','/admin/masterplans'].includes(path)&&!path.startsWith('/api/operations/')&&!path.startsWith('/api/masterplans/'))return null;
  if(['/sharing','/access-request','/admin/operations','/admin/masterplans'].includes(path)&&method==='GET'){if(path.startsWith('/admin/')&&!owner)return new Response(null,{status:303,headers:{Location:'/admin/login'}});return new Response(app.templates.operationsHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}});}
  if(path==='/api/masterplans'&&method==='GET')return json(await publicPlans(env));
@@ -41,6 +45,7 @@ export async function operationsRoute(app,request,owner){const env=app.env,url=n
   const user=await editorIdentity(env,request,owner);if(!user)return json({error:'Sign in with your approved Autodesk email or owner code.'},401);
   if(path==='/api/operations/plan-source'&&method==='GET'&&owner)return json(await new OperationsAPS(env,['data:read']).planSource(url.searchParams.get('folder')));
   if(path==='/api/operations/plan-source-file'&&method==='GET'&&owner){const list=await new OperationsAPS(env,['data:read']).planSource(url.searchParams.get('folder')),file=list.rows.find(r=>r.id===url.searchParams.get('item')&&r.type==='items'&&/\.(pdf|png|jpe?g)$/i.test(r.name));if(!file)throw Error('Select a plan image or PDF from the supplied source.');const d=await downloadItemWorkbook(env,file.id);return new Response(d.bytes,{headers:{'Content-Type':/\.pdf$/i.test(file.name)?'application/pdf':/\.png$/i.test(file.name)?'image/png':'image/jpeg','Content-Disposition':'attachment; filename="'+file.name.replace(/[^A-Za-z0-9._-]/g,'_')+'"'}});}
+  if(path==='/api/operations/companies'&&owner){const assets=planAssets(await getScope(env)).map(a=>({...a,appendixParty:responsibilityFor(a)?.appendixParty||responsibilityFor(a)?.party||a.party}));if(method==='GET')return json({settings:await companySettings(env),assets});if(method==='PUT')return json(await saveCompanies(env,await payload(request),assets));}
   if(path==='/api/operations/locations'&&method==='POST'&&owner)return json(await syncLocations(env));
   if(path==='/api/operations/masterplans'&&method==='GET'&&owner)return json({plans:await Promise.all(zones.map(z=>planState(env,z))),assets:planAssets(await getScope(env))});
   if(path==='/api/operations/masterplans'&&method==='PUT'&&owner)return json(await savePlan(env,JSON.parse(new TextDecoder().decode(await body(request,1600000)))));

@@ -1,13 +1,16 @@
 from django.contrib import admin
 from django.urls import path
 from django.shortcuts import redirect
-from hub import views, auth, requirements
+from hub import views, auth, requirements, companies
 
 urlpatterns = [
     path('', views.dashboard),
     path('runtime-config.js',views.config),
     path('assets/forma.ico',lambda r:redirect('/static/assets/forma.ico')),
     path('assets/arx.svg',lambda r:redirect('/static/assets/arx.svg')),
+    path('admin/companies',companies.workspace),
+    path('api/operations/companies',companies.api),
+    path('api/companies',companies.public),
     path('admin/',admin.site.urls),
     path('admin/content',lambda r:redirect('/admin/hub/contentsection/')),
     path('admin/editors',lambda r:redirect('/admin/hub/editor/')),

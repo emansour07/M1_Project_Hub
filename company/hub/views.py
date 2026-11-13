@@ -151,6 +151,8 @@ def sharing(req):
 
 @require_GET
 def masterplans(req):
+    from .companies import settings as company_settings, assignment
+    companies=company_settings()
     locations_snapshot=Snapshot.objects.filter(key='locations').first()
     locations=locations_snapshot.data if locations_snapshot else {'rows':[],'source':None}
     scope = Snapshot.objects.filter(key='knowledge').first()
@@ -167,9 +169,10 @@ def masterplans(req):
         rows=[]
         for h in p.hotspots.filter(asset_id__in=allowed):
             visual=next(a for a in visual_assets if a['id']==h.asset_id)
+            visual={**visual,**assignment(visual,companies)}
             deliverables = [e for e in entries if e.get('scopeId')==h.asset_id]
             phases = sorted({e.get('projectStage') for e in deliverables if e.get('projectStage')})
-            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'width':h.width,'height':h.height,'function':h.function,'contextOnly':visual.get('contextOnly',False),'party':visual.get('party'),'appendixParty':visual.get('appendixParty'),'deliveryRole':visual.get('deliveryRole'),
+            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'width':h.width,'height':h.height,'function':h.function,'contextOnly':visual.get('contextOnly',False),'party':visual.get('party'),'color':visual.get('color'),'appendixParty':visual.get('appendixParty'),'deliveryRole':visual.get('deliveryRole'),
                 'phases':phases,'models':sum(e.get('category')=='Models' for e in deliverables),'drawings':sum(e.get('category')=='Drawings' for e in deliverables),
                 'completeness':scores.get(h.asset_id,{}).get('percentage'),'approval':scores.get(h.asset_id),
                 'location':next((r for r in locations['rows'] if r['id']==h.asset_id),None)})

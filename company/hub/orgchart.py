@@ -1,17 +1,53 @@
 """Render supplied Excel DrawingML at its original positions; no inferred reporting lines."""
-import io
+import math
+import posixpath
 import html
 import textwrap
 import zipfile
 from defusedxml import ElementTree as ET
 
-NS = {'a':'http://schemas.openxmlformats.org/drawingml/2006/main','x':'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}
+NS = {'a':'http://schemas.openxmlformats.org/drawingml/2006/main','x':'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing','s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+
+def worksheet_for_drawing(z,drawing):
+    for name in z.namelist():
+        if not name.startswith('xl/worksheets/_rels/') or not name.endswith('.xml.rels'): continue
+        for rel in ET.fromstring(z.read(name)):
+            target=posixpath.normpath(posixpath.join('xl/worksheets',rel.get('Target','')))
+            if target==drawing:
+                return ET.fromstring(z.read('xl/worksheets/'+posixpath.basename(name)[:-5]))
+    return None
+
+def anchor_bounds(anchor,sheet):
+    """Cell anchors are authoritative after Excel moves/resizes rows and columns.
+
+    Cached a:xfrm offsets in the supplied workbook retain obsolete positions.
+    """
+    start,end=anchor.find('x:from',NS),anchor.find('x:to',NS)
+    if sheet is None or start is None or end is None: return None
+    fmt=sheet.find('s:sheetFormatPr',NS)
+    default_width=float(fmt.get('defaultColWidth','8.43')) if fmt is not None else 8.43
+    default_height=float(fmt.get('defaultRowHeight','15')) if fmt is not None else 15
+    cols=sheet.findall('s:cols/s:col',NS);rows={int(r.get('r'))-1:r for r in sheet.findall('s:sheetData/s:row',NS)}
+    def col_width(i):
+        c=next((c for c in cols if int(c.get('min'))-1<=i<int(c.get('max'))),None)
+        if c is not None and c.get('hidden')=='1':return 0
+        w=float(c.get('width',default_width)) if c is not None else default_width
+        return math.floor((256*w+math.floor(128/7))/256*7)+5
+    def row_height(i):
+        r=rows.get(i)
+        return 0 if r is not None and r.get('hidden')=='1' else float(r.get('ht',default_height) if r is not None else default_height)*96/72
+    def point(n):
+        col,row=int(n.find('x:col',NS).text),int(n.find('x:row',NS).text)
+        return (sum(col_width(i) for i in range(col))+int(n.find('x:colOff',NS).text)/9525,sum(row_height(i) for i in range(row))+int(n.find('x:rowOff',NS).text)/9525)
+    x,y=point(start);right,bottom=point(end)
+    return x,y,right-x,bottom-y
 
 def render_orgchart(source):
     with zipfile.ZipFile(source) as z:
         info = z.getinfo('xl/drawings/drawing1.xml')
         if info.file_size > 5_000_000: raise ValueError('Organisation chart drawing is too large.')
         root = ET.fromstring(z.read(info))
+        sheet = worksheet_for_drawing(z,'xl/drawings/drawing1.xml')
     scale = 9525
     shapes, lines, extents, names = [], [], [], []
     for anchor in root:
@@ -27,6 +63,8 @@ def render_orgchart(source):
         off, ext = transform.find('a:off',NS), transform.find('a:ext',NS)
         if off is None or ext is None: continue
         x,y,w,h = [int(v)/scale for v in [off.get('x'),off.get('y'),ext.get('cx'),ext.get('cy')]]
+        current=anchor_bounds(anchor,sheet)
+        if current is not None:x,y,w,h=current
         extents.append((x,y,x+w,y+h))
         colour = props.find('a:ln/a:solidFill/a:srgbClr',NS)
         stroke = '#'+colour.get('val') if colour is not None else '#909090'
