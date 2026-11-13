@@ -169,7 +169,7 @@ def masterplans(req):
             visual=next(a for a in visual_assets if a['id']==h.asset_id)
             deliverables = [e for e in entries if e.get('scopeId')==h.asset_id]
             phases = sorted({e.get('projectStage') for e in deliverables if e.get('projectStage')})
-            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'width':h.width,'height':h.height,'function':h.function,'contextOnly':visual.get('contextOnly',False),'party':visual.get('party'),
+            rows.append({'id':h.id,'assetId':h.asset_id,'name':h.name,'code':h.code,'x':h.x,'y':h.y,'width':h.width,'height':h.height,'function':h.function,'contextOnly':visual.get('contextOnly',False),'party':visual.get('party'),'appendixParty':visual.get('appendixParty'),'deliveryRole':visual.get('deliveryRole'),
                 'phases':phases,'models':sum(e.get('category')=='Models' for e in deliverables),'drawings':sum(e.get('category')=='Drawings' for e in deliverables),
                 'completeness':scores.get(h.asset_id,{}).get('percentage'),'approval':scores.get(h.asset_id),
                 'location':next((r for r in locations['rows'] if r['id']==h.asset_id),None)})

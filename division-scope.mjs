@@ -46,7 +46,10 @@ const entries=[
  ['Island','PSS1','Primary Substation 1','ARX/ATM (Interfacing Only)'],
  ['Subsea','SS1 & SS2','Subsea Water Transmission Pipelines (2No)','ATM']
 ];
-export const divisionScope=entries.map(([zone,code,name,party],i)=>({id:'scope-'+(i+1),zone,code,name,party,interfaceOnly:party.includes('Interfacing')}));
+// User-confirmed delivery assignment, clarified to include all four gatehouses.
+// Appendix responsibility remains ARX; Z-Dizayn supplies modelling, not design.
+export const zDizaynAssets=['A33','A36','A37','A48','C48','D48','E48'];
+export const divisionScope=entries.map(([zone,code,name,party],i)=>({id:'scope-'+(i+1),zone,code,name,party,interfaceOnly:party.includes('Interfacing'),...(zone==='Island'&&zDizaynAssets.includes(code)?{appendixParty:party,party:'Z-Dizayn',deliveryRole:'Modelling based on supplied design information'}:{})}));
 export function responsibilityFor(asset){
  return divisionScope.find(r=>r.zone===asset.zone&&r.code&&r.code===asset.code)||divisionScope.find(r=>r.zone===asset.zone&&r.name.toLowerCase()===asset.name?.toLowerCase())||null;
 }
