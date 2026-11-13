@@ -13,7 +13,7 @@ for path in (root/'company').rglob('*'):
     if not path.is_file():continue
     rel=path.relative_to(root)
     if any(part in ('private','__pycache__','staticfiles','.venv') for part in rel.parts):continue
-    if path.suffix in ('.py','.html','.txt','.md') or path.name=='.env.example':files.append((path,rel.as_posix()))
+    if path.suffix in ('.py','.html','.txt','.md') or path.name in ('.env.example','requirements-schema.json'):files.append((path,rel.as_posix()))
 for path in (root/'pages').rglob('*'):
     if path.is_file() and path.suffix in ('.html','.js','.mjs','.css','.svg','.ico') and path.name!='M1_Project_Hub_Preview.html':
         files.append((path,path.relative_to(root).as_posix()))

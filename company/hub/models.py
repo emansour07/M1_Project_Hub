@@ -8,6 +8,19 @@ class Snapshot(models.Model):
     data = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 
+class Requirement(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    revision = models.PositiveIntegerField(default=1)
+    data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.EmailField()
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.EmailField()
+
+class RequirementEvent(models.Model):
+    requirement = models.ForeignKey(Requirement, on_delete=models.PROTECT, related_name='events')
+    data = models.JSONField(default=dict)
+
 class Editor(models.Model):
     email = models.EmailField(unique=True)
     active = models.BooleanField(default=True)

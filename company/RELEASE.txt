@@ -1,16 +1,16 @@
 M1 Project Hub
-Release: 2026.11.13-internal-1
+Release: 2026.11.13-internal-2
 Target: internal company-hosted Python/Django, frontend and persistent state.
 Status: deployment candidate; not installed on the company server.
 
 Includes the M1 backlog implementation and confirmed per-asset MACE_ACC_Status rule.
 Hosting handover: IT_HANDOVER.md / IT_HANDOVER.html.
-First install: migrations 0001 through 0004 and init_company.
+First install: migrations 0001 through 0005 and init_company.
 Persistent state: M1_DB_PATH and M1_MEDIA_ROOT must be external to code releases.
 Runtime secrets and database are excluded. Organisation-chart seed is included.
 Frontend uses local assets/system fonts; Autodesk remains the external integration.
 Backend validated on Python 3.14.7 with requirements-tested.txt.
-Validation: 34 Django tests and 68 JavaScript tests passed.
+Validation: 38 Django tests and 74 JavaScript tests passed.
 Live mail, ACC writes, company proxy/SSO/network and PostgreSQL not verified.
 Known source gaps: Mainland masterplan pending, Island asset placement pending,
 and refreshed MIDP Planned/Forecast/MACE_ACC_Status columns pending source publication.
@@ -19,3 +19,7 @@ No production migration from the old Cloudflare state is included.
 For rollback, retain matched code, database and persistent-media backups.
 Restoring a database does not reverse external Autodesk changes or delivered mail.
 Resolve uncertain external actions before replaying queues.
+
+Adds the internal collaborative Requirements Register without an owner approval gate.
+Temporary public frontend/Cloudflare use was re-authorised until IT deploys internally.
+Cloudflare requirements records are not automatically migrated by this package.

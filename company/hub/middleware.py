@@ -4,6 +4,6 @@ class ResponseHeaders:
         response=self.get_response(request)
         response['Referrer-Policy']='same-origin'
         response['X-Content-Type-Options']='nosniff'
-        if request.path == '/' or request.path.startswith(('/api/','/owner/','/admin/','/editor','/sharing','/access-request','/runtime-config')):
+        if request.path == '/' or request.path.startswith(('/api/','/owner/','/admin/','/editor','/sharing','/access-request','/runtime-config','/requirements')):
             response['Cache-Control']='no-store'
         return response

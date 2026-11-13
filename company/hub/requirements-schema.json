@@ -1,0 +1,24 @@
+{
+  "statuses": ["Draft", "Needs input", "Ready for coordination", "Consolidated", "Archived"],
+  "disciplines": ["Architecture", "Structure", "Civil", "Earthworks", "Roads", "Mechanical", "Electrical", "Plumbing", "Fire fighting", "ELV", "BMS", "Landscape", "Drainage", "Wet utilities", "Dry utilities", "Utilities / marine", "Marine", "General"],
+  "fields": [
+    {"key":"title","label":"Requirement title","required":true,"max":180},
+    {"key":"scopeId","label":"Asset / scope","required":true,"type":"asset","max":160},
+    {"key":"discipline","label":"Discipline","required":true,"type":"discipline","max":100},
+    {"key":"system","label":"System / package","required":true,"max":180},
+    {"key":"element","label":"Element / equipment type","required":true,"max":180},
+    {"key":"information","label":"Information we need","required":true,"type":"textarea","max":5000,"help":"One clearly defined information requirement. State what the contributing team must supply."},
+    {"key":"modelUse","label":"How engineering / modelling will use it","required":true,"type":"textarea","max":2000},
+    {"key":"parameter","label":"Model parameter / property name","max":180,"help":"Use the agreed parameter name if known; leave blank until confirmed."},
+    {"key":"dataType","label":"Data type","type":"select","options":["Text","Number","Date","Yes / No","Dimensions","Geometry","Schedule / table","Document / reference"],"max":80},
+    {"key":"units","label":"Units / measurement basis","max":180},
+    {"key":"format","label":"Required delivery format / template","max":250},
+    {"key":"criteria","label":"Acceptance / validation criteria","type":"textarea","max":3000},
+    {"key":"provider","label":"Expected contributing team / subcontractor","max":250},
+    {"key":"responsible","label":"Internal responsible team / lead","max":250},
+    {"key":"interfaces","label":"Interfaces with other systems / disciplines","type":"textarea","max":2000},
+    {"key":"dueDate","label":"Information needed by","type":"date","max":10},
+    {"key":"reference","label":"ACC / reference link","type":"url","max":2000},
+    {"key":"notes","label":"Coordination notes","type":"textarea","max":3000}
+  ]
+}

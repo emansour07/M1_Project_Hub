@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path
 from django.shortcuts import redirect
-from hub import views, auth
+from hub import views, auth, requirements
 
 urlpatterns = [
     path('', views.dashboard),
@@ -19,6 +19,10 @@ urlpatterns = [
     path('sharing/',views.sharing),
     path('editor',views.tracker_editor),
     path('owner/',views.owner_home),
+    path('requirements',requirements.workspace),
+    path('api/requirements',requirements.api),
+    path('api/requirements/<uuid:ident>',requirements.api),
+    path('api/requirements/<uuid:ident>/comments',requirements.api,{'comments':True}),
     path('owner/tracker/<uuid:ident>/',views.tracker_approval),
     path('owner/tracker/<uuid:ident>/preview',views.tracker_preview),
     path('api/content',views.content),

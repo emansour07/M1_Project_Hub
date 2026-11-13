@@ -1,4 +1,6 @@
 import {reminderSettings,saveReminderSettings} from './reminders.mjs';
+import {RequirementsStore,schema,permitted} from './requirements.mjs';
+import {assetCompleteness} from './completeness.mjs';
 
 import {editorIdentity,editorList,saveEditors,startEditorLogin,finishEditorLogin,logoutEditor,canEditRow,canEditField} from './editor-auth.mjs';
 
@@ -57,9 +59,9 @@ function secure(response){const h=new Headers(response.headers);h.set('Cache-Con
 
 export class M1Application {
 
- constructor(storage,env,templates){this.templates=templates;this.env={...env,BUCKET:new SQLiteStore(storage),SQL:storage.sql};this.auth=new OwnerCodeAuth(storage.sql,env.M1_ADMIN_KEY);this.app=createHandler(templates.adminHtml,{schema:1,name:'Awaiting M1 reviews',reportAt:946684800000,reviews:[],voidCount:0,warnings:[]});}
+ constructor(storage,env,templates){this.templates=templates;this.storage=storage;this.env={...env,BUCKET:new SQLiteStore(storage),SQL:storage.sql};this.auth=new OwnerCodeAuth(storage.sql,env.M1_ADMIN_KEY);this.app=createHandler(templates.adminHtml,{schema:1,name:'Awaiting M1 reviews',reportAt:946684800000,reviews:[],voidCount:0,warnings:[]});}
 
- async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker'].includes(url.pathname))||(request.method==='POST'&&['/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
+ async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness'].includes(url.pathname))||(request.method==='POST'&&['/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
 
  async handle(request){const {trackerEditorHtml,contentEditorHtml,remindersHtml}=this.templates;const env=this.env,url=new URL(request.url),path=url.pathname;
 
@@ -100,6 +102,25 @@ export class M1Application {
   }
 
   const owner=await isOwner(request,secret);
+
+  if(path==='/requirements'&&request.method==='GET')return new Response(this.templates.requirementsHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}});
+  if(path==='/api/requirements'||path.startsWith('/api/requirements/')){
+   const user=await editorIdentity(env,request,owner);if(!user)return json({error:'Sign in with an approved Autodesk account.'},401);
+   if(request.method!=='GET'&&request.headers.get('Origin')!==url.origin)return json({error:'Request not accepted.'},403);
+   const assets=(await getScope(env))?.rows||[],store=new RequirementsStore(this.storage);
+   try{
+    if(path==='/api/requirements'&&request.method==='GET')return json({user,assets:assets.filter(a=>user.owner||user.assets.includes('*')||user.assets.includes(a.id)).map(a=>({id:a.id,label:a.zone+' · '+a.name+' · '+(a.proposed||a.code)})),schema,rows:store.list(user,assets),dashboardUrl:env.FRONTEND_URL,ownerUrl:'/admin/login'});
+    if(path==='/api/requirements'&&request.method==='POST')return json(store.save(user,await limitedJson(request,35000),assets));
+    const match=/^\/api\/requirements\/([a-f0-9-]{36})(\/comments)?$/.exec(path);
+    if(match){const row=store.get(match[1]);if(!row||!permitted(user,row.data)||row.data.scopeId!=='*'&&!assets.some(a=>a.id===row.data.scopeId))return json({error:'Requirement not found in your scope.'},404);
+     if(!match[2]&&request.method==='GET')return json({row,events:store.events(row.id)});
+     if(match[2]&&request.method==='POST')return json(store.comment(user,row.id,(await limitedJson(request,14000)).text,assets));
+    }
+    return json({error:'Action not available.'},405);
+   }catch(e){return json({error:e.message},400);}
+  }
+
+  if(path==='/api/completeness'&&request.method==='GET')return json({assets:assetCompleteness((await midpSnapshot(env))?.entries||[])});
 
   if(path==='/auth/editor/login'&&request.method==='GET'){try{return await startEditorLogin(env,request);}catch(e){return json({error:owner?e.message:'Editor sign-in is temporarily unavailable.'},503);}}
 

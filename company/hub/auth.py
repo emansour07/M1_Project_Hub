@@ -25,7 +25,7 @@ def editor_login(req):
     c = settings.APS_CONFIG
     if not c['M1_LOGIN_CLIENT_ID'] or not c['M1_LOGIN_CLIENT_SECRET']: return HttpResponseForbidden('Editor sign-in is awaiting the company Autodesk connection.')
     state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
-    req.session['oauth'] = {'state':state,'verifier':verifier,'until':time.time()+600}
+    req.session['oauth'] = {'state':state,'verifier':verifier,'until':time.time()+600,'next':'/requirements' if req.GET.get('next')=='requirements' else '/sharing/'}
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
     query = urllib.parse.urlencode({'response_type':'code','client_id':c['M1_LOGIN_CLIENT_ID'],
         'redirect_uri':settings.PUBLIC_URL+'/api/forma/callback','scope':'user-profile:read','state':state,
@@ -50,6 +50,6 @@ def editor_callback(req):
         req.session.cycle_key()
         req.session['editor_email'] = email
         req.session['editor_until'] = time.time()+8*3600
-        return redirect('/sharing/')
+        return redirect(saved.get('next','/sharing/'))
     except Exception:
         return HttpResponseForbidden('Autodesk sign-in could not be completed. Please start again.')

@@ -1,9 +1,11 @@
-name: Legacy public Pages deployment (manual only)
+name: Publish M1 interim dashboard
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       publish_legacy:
-        description: Explicitly publish the legacy Cloudflare-connected public frontend
+        description: Publish the interim Cloudflare-connected frontend
         type: boolean
         required: true
         default: false
@@ -16,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: inputs.publish_legacy == true
+    if: github.event_name == 'push' || inputs.publish_legacy == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

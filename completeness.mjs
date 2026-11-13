@@ -1,0 +1,4 @@
+export function assetCompleteness(entries){
+ const groups=new Map();for(const r of entries||[]){if(!r.scopeId)continue;let key=String(r.name||'').trim().toLowerCase();if(r.category==='Models')key=key.replace(/\.(rvt|ifc|nwc|nwd|dwfx|dwg)$/,'');if(!groups.has(r.scopeId))groups.set(r.scopeId,new Map());const docs=groups.get(r.scopeId);if(!docs.has(key))docs.set(key,[]);docs.get(key).push(r);}
+ return Object.fromEntries([...groups].map(([asset,docs])=>{let approved=0,blankStatus=0,conflictingStatus=0;for(const rows of docs.values()){const values=new Set(rows.map(r=>String(r.approvalStatus||'').trim().toLowerCase()));approved+=values.size===1&&['approved','approved w/ comments'].includes([...values][0])?1:0;blankStatus+=[...values].some(Boolean)?0:1;conflictingStatus+=values.size>1?1:0;}return [asset,{total:docs.size,approved,blankStatus,conflictingStatus,percentage:docs.size?Math.round(1000*approved/docs.size)/10:null,statusField:'MACE_ACC_Status'}];}));
+}

@@ -8,6 +8,8 @@ The current GitHub/Cloudflare dashboard has **not** been replaced or deployed fr
 
 ## Implemented
 
+- Internal Requirements Register: assigned discipline/asset collaboration, structured information requirements, comments and revision history, conflict checks, copying and filtered CSV export. The project coordinator can organise and contribute without an approval gate. Subcontractor submissions are deferred. Cloudflare and Django use the same schema/UI; runtime records require a separate controlled migration at cutover.
+
 - MIDP category, asset, discipline, originator, format, approval and inclusive **Planned date** filters. Planned/Forecast are read by header. No fallback to exchange Issue Date. Filtered Excel preserves retained rows, cell styles and worksheet layout; excluded deliverable rows and sheets are removed from the export.
 - `MACE_ACC_Status` is read without inventing a value. Per-asset completeness divides approved deliverables by total deliverables for that asset; blank statuses remain in the denominator. Matching model exchange formats count once. Conflicting duplicate statuses do not count as approved. The confirmed rule counts `approved` and `approved w/ comments`; `revise and resubmit` and `rejected` do not count. This rule is enabled on installation and remains editable in the owner workspace.
 - Knowledge Hub holds project information, scoped responsibilities, asset-code mapping, the supplied organisation chart, and interactive masterplans. Submit/review instructions are in Duties. Owners edit content and links through forms.
