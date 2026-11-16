@@ -1,5 +1,6 @@
 (function(root){
 'use strict';
+const Dates=root.DateRules||(typeof require==='function'?require('./date-rules.js'):null);
 const DAY=86400000, clean=v=>v==null?'':String(v).trim(), norm=v=>clean(v).toLowerCase().replace(/[^a-z0-9]/g,'');
 function date(v){
  if(v==null||v===''||v==='--')return null;
@@ -45,10 +46,10 @@ function isOpen(r){return /^OPEN(?:\b|\s|\()/.test(r.status);}
 function isClosed(r){return r.status==='CLOSED';}
 function outcome(f){return clean(f.status)||'Pending decision';}
 function reviewOutcome(r){return [...new Set(r.files.map(outcome))].sort().join(' + ')||'Pending decision';}
-function urgency(r,t){if(!isOpen(r))return isClosed(r)?'Closed':r.status;if(r.due===null)return 'No due date';if(r.due<t)return 'Overdue';if(r.due<=t+2*DAY)return 'Due in 48h';return 'On track';}
-function stats(rows,t){const open=rows.filter(isOpen),closed=rows.filter(isClosed),files=rows.flatMap(r=>r.files),outcomes={};for(const f of files){const k=outcome(f);outcomes[k]=(outcomes[k]||0)+1;}const cycles=closed.filter(r=>r.created!==null&&r.finished!==null&&r.finished>=r.created).map(r=>(r.finished-r.created)/DAY);return {total:rows.length,open:open.length,closed:closed.length,overdue:open.filter(r=>urgency(r,t)==='Overdue').length,dueSoon:open.filter(r=>urgency(r,t)==='Due in 48h').length,noDue:open.filter(r=>!r.due).length,files:files.length,outcomes,rework:closed.filter(r=>r.files.some(f=>/revise|re-submit|resubmit|reject/i.test(outcome(f)))).length,cycle:cycles.length?cycles.reduce((a,b)=>a+b,0)/cycles.length:null,cycleN:cycles.length,closeRate:rows.length?closed.length/rows.length:0};}
+function urgency(r,t){if(!isOpen(r))return isClosed(r)?'Closed':r.status;if(!Number.isFinite(r.due))return 'No due date';if(r.due<t)return 'Overdue';if(Dates.workingDays(t,r.due)<=2)return 'Due within 2 working days';return 'On track';}
+function stats(rows,t){const open=rows.filter(isOpen),closed=rows.filter(isClosed),files=rows.flatMap(r=>r.files),outcomes={};for(const f of files){const k=outcome(f);outcomes[k]=(outcomes[k]||0)+1;}const cycles=closed.filter(r=>r.created!==null&&r.finished!==null&&r.finished>=r.created).map(r=>Dates.workingDays(r.created,r.finished));return {total:rows.length,open:open.length,closed:closed.length,overdue:open.filter(r=>urgency(r,t)==='Overdue').length,dueSoon:open.filter(r=>urgency(r,t)==='Due within 2 working days').length,noDue:open.filter(r=>!r.due).length,files:files.length,outcomes,rework:closed.filter(r=>r.files.some(f=>/revise|re-submit|resubmit|reject/i.test(outcome(f)))).length,cycle:cycles.length?cycles.reduce((a,b)=>a+b,0)/cycles.length:null,cycleN:cycles.length,closeRate:rows.length?closed.length/rows.length:0};}
 function compare(current,previous){if(!previous)return null;const a=new Map(previous.reviews.map(r=>[r.id,r])),b=new Map(current.reviews.map(r=>[r.id,r]));return {added:current.reviews.filter(r=>!a.has(r.id)),closed:current.reviews.filter(r=>a.has(r.id)&&isOpen(a.get(r.id))&&isClosed(r)),reopened:current.reviews.filter(r=>a.has(r.id)&&isClosed(a.get(r.id))&&isOpen(r)),removed:previous.reviews.filter(r=>!b.has(r.id)),changed:current.reviews.filter(r=>a.has(r.id)&&JSON.stringify(r)!==JSON.stringify(a.get(r.id)))};}
-const SIZE_BANDS=['1–4','5–10','11–20','>20'], AGE_BANDS=['≤1 day','>1–2 days','>2–3 days','>3 days'];
+const SIZE_BANDS=['1–4','5–10','11–20','>20'], AGE_BANDS=['≤1 working day','>1–2 working days','>2–3 working days','>3 working days'];
 const PDF_TYPES=['drawing','report','other','unclassified'];
 const PDF_LABELS={drawing:'Drawing',model:'Model',report:'Report',other:'Other document',unclassified:'Unclassified document',nonPdf:'CAD / model / other file'};
 function pdfClassification(file,packageFiles=[]){
@@ -81,8 +82,8 @@ function pdfCounts(r){const counts={drawing:0,report:0,other:0,unclassified:0,to
 const pdfCount=r=>pdfCounts(r).total;
 const drawingCount=r=>pdfCounts(r).drawing;
 const sizeBand=n=>n<1?'No drawings':n<5?'1–4':n<=10?'5–10':n<=20?'11–20':'>20';
-function reviewDays(r,t){const end=isClosed(r)?r.finished:isOpen(r)?t:null;return Number.isFinite(r.created)&&Number.isFinite(end)&&end>=r.created?(end-r.created)/DAY:null;}
-const ageBand=n=>n===null?'Unknown age':n<=1?'≤1 day':n<=2?'>1–2 days':n<=3?'>2–3 days':'>3 days';
+function reviewDays(r,t){const end=isClosed(r)?r.finished:isOpen(r)?t:null;return Number.isFinite(r.created)&&Number.isFinite(end)&&end>=r.created?Dates.workingDays(r.created,end):null;}
+const ageBand=n=>n===null?'Unknown age':n<=1?'≤1 working day':n<=2?'>1–2 working days':n<=3?'>2–3 working days':'>3 working days';
 function drawingMetrics(rows,t,scope='open'){
  const result={total:0,open:0,closed:0,other:0,packages:0,noDrawingPackages:0,models:0,pdfTypes:{drawing:0,report:0,other:0,unclassified:0},sizes:Object.fromEntries(SIZE_BANDS.map(k=>[k,0])),age:Object.fromEntries(AGE_BANDS.map(k=>[k,0])),unknownAge:0,ageTotal:0,cumulative:[0,0,0]};
  for(const r of rows){if(/\bVOID(?:ED)?\b/i.test(r.status))continue;const counts=pdfCounts(r);result.models+=modelCount(r);for(const type of PDF_TYPES)result.pdfTypes[type]+=counts[type];const n=counts.drawing;if(!n){result.noDrawingPackages++;continue;}result.total+=n;result.packages++;result.sizes[sizeBand(n)]++;result[isOpen(r)?'open':isClosed(r)?'closed':'other']+=n;
@@ -95,7 +96,7 @@ function workloadMatches(r,value,t){if(!value)return true;const [kind,arg,band]=
  if(kind==='age'||kind==='within'){if(arg==='open'?!isOpen(r):!isClosed(r))return false;const days=reviewDays(r,t);return kind==='age'?ageBand(days)===band:days!==null&&days<=Number(band);}
  return false;
 }
-function workloadLabel(value){const [kind,arg,band]=value.split('|');return kind==='document'?PDF_LABELS[arg]:kind==='all'?'Drawings':kind==='state'?arg+' · drawings':kind==='size'?arg+' drawings / package':kind==='within'?'Within '+band+' days · '+(arg==='open'?'under review':'completed'):kind==='age'?band+' · '+(arg==='open'?'under review':'completed'):value;}
+function workloadLabel(value){const [kind,arg,band]=value.split('|');return kind==='document'?PDF_LABELS[arg]:kind==='all'?'Drawings':kind==='state'?arg+' · drawings':kind==='size'?arg+' drawings / package':kind==='within'?'Within '+band+' working days · '+(arg==='open'?'under review':'completed'):kind==='age'?band+' · '+(arg==='open'?'under review':'completed'):value;}
 function formaReviewUrl(r,project){const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;const projectId=clean(project).replace(/^b\./,'');return uuid.test(projectId)&&uuid.test(r.autodeskId||'')?'https://acc.autodesk.eu/docs/reviews/projects/'+projectId+'/'+r.autodeskId:null;}
 root.M1={DAY,date,discipline,parseWorkbook,isOpen,isClosed,outcome,reviewOutcome,urgency,stats,compare,pdfCount,drawingCount,pdfCounts,pdfType,pdfClassification,documentType,documentClassification,modelCount,documentCount,PDF_TYPES,PDF_LABELS,sizeBand,reviewDays,ageBand,drawingMetrics,workloadMatches,workloadLabel,SIZE_BANDS,AGE_BANDS,formaReviewUrl};
 if(typeof module!=='undefined')module.exports=root.M1;

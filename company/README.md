@@ -110,3 +110,12 @@ The existing GitHub Pages / Cloudflare deployment remains active until internal 
 If every approval value for an asset is blank, completeness stays unscored; once statuses are present, blank documents remain in the denominator. The current live MIDP v2 has 3,900 scoped rows and no filled Planned, Forecast or MACE_ACC_Status values.
 
 The Island image is now loaded on the interim host, with three verified Revit-highlighted accommodation buildings positioned. Remaining asset locations need confirmation, especially duplicate source labels. Mainland is still pending. Project imagery and operation records are stored outside Git source. They require a separate migration to the company server.
+
+
+## 16 November 2026 — Working calendar and date-range reports
+
+The approved working week is Saturday through Thursday. Friday alone is excluded; no public holidays or office-hour calendar is assumed. Durations retain fractional days and use Saudi project time (UTC+03). Review age/cycle, overdue duration and the two-working-day warning use this calendar. Source deadlines are not shifted. Model age warnings use seven working days.
+
+Date filters have inclusive From/To dates and a selectable date field. Missing dates remain visible without a range and are excluded while a range is selected; reversed ranges are rejected. Exports retain the underlying dates, not just durations. Date-range reports filter the current records; they are not reconstructed historical status snapshots.
+
+M1 adds review submission/due/completion ranges, any tracker date field, analysis target dates, original-model update dates, Shared-checker file update dates and Requirements needed-by/last-update dates. The MIDP continues to use its approved Planned date range and preserves the original Excel formatting. Original Design now includes an asset-by-discipline matrix, with received/expected counts, missing-model/format drill-down and CSV exports. Matched files link to ACC items; missing files link to the related observed folder or the reference root, never an invented file location. The 54 unassigned expectations stay outside asset totals.

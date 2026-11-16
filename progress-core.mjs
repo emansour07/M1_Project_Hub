@@ -1,3 +1,4 @@
+import './date-rules.js';
 import {groupModels,modelStem} from './model-formats.mjs';
 import {assetFromFilename,resolveAsset,canonicalFilename,assetRowsForParcel} from './asset-codes.mjs';
 const disciplines={BM010:'Architecture',BM012:'Structure',GB001:'Earthworks',BM015:'Roads',BM018:'Mechanical',BM019:'Electrical',BM020:'Plumbing',BM024:'Fire fighting',BM023:'ELV',BM025:'BMS',BM032:'Landscape',BM017:'Drainage',BM036:'Mechanical',BM021:'Landscape',BM100:'General',BMXXX:'Civil'};
@@ -10,7 +11,7 @@ export function fileDiscipline(file){
 export function isProgressModel(file){return /\.(rvt|ifc|nwc|nwd|dwfx)$/i.test(file.name)||(/\.dwg$/i.test(file.name)&&(/(?:^|-)C3D(?:-|\.)/i.test(file.name)||['Civil','Roads','Earthworks','Drainage','Wet utilities','Dry utilities','Marine','Utilities / marine'].includes(fileDiscipline(file))));}
 export function updateState(value,now=Date.now()){
  const t=typeof value==='number'?value:Date.parse(value);if(!Number.isFinite(t)||t>now)return 'Date unavailable';
- return now-t>7*86400000?'Over 7 days':'Updated this week';
+ return DateRules.workingDays(t,now)>7?'Over 7 working days':'Updated within 7 working days';
 }
 export function fileAsset(file,mapping){
  if(file.scopeAsset)return {code:file.scopeAsset,candidates:[file.scopeAsset]};

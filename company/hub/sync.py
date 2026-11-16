@@ -1,3 +1,4 @@
+from .calendar import working_days
 import re
 import time
 from collections import defaultdict
@@ -147,7 +148,7 @@ def progress_data(files,tracker,midp,knowledge,now):
             except ValueError:return None
         stamp=epoch(f.get('updatedAt'))
         f.update({'asset':f['scopeAsset'],'assetName':f['scopeName'],'discipline':discipline(f['name']),'log':percent('LOG'),'loi':percent('LOI'),
-            'updateState':'Date unavailable' if stamp is None or stamp>now else 'Over 7 days' if now-stamp>7*86400000 else 'Updated this week'})
+            'updateState':'Date unavailable' if stamp is None or stamp>now else 'Over 7 working days' if working_days(stamp,now)>7 else 'Updated within 7 working days'})
         group(f)['progressed']+=1
     for r in midp['entries']:
         if r['category']=='Models':group(r)['expected']+=1
