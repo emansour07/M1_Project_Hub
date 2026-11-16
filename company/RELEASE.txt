@@ -1,5 +1,5 @@
 M1 Project Hub
-Release: 2026.11.13-internal-3
+Release: 2026.11.16-consolidated-midp
 Target: internal company-hosted Python/Django, frontend and persistent state.
 Status: deployment candidate; not installed on the company server.
 
@@ -10,7 +10,7 @@ Persistent state: M1_DB_PATH and M1_MEDIA_ROOT must be external to code releases
 Runtime secrets and database are excluded. Organisation-chart seed is included.
 Frontend uses local assets/system fonts; Autodesk remains the external integration.
 Backend validated on Python 3.14.7 with requirements-tested.txt.
-Validation: 38 Django tests and 86 JavaScript tests passed.
+Validation: 50 Django tests and 121 JavaScript tests passed.
 Live mail, ACC writes, company proxy/SSO/network and PostgreSQL not verified.
 Known source gaps: Mainland masterplan pending, Island asset placement pending,
 and refreshed MIDP Planned/Forecast/MACE_ACC_Status columns pending source publication.
@@ -29,3 +29,8 @@ scoped chunked Shared uploads, organisation chart and visual masterplan editor.
 All-blank approval statuses display as unscored on both hosting implementations.
 Cloudflare operation records, plan images/pins and requirements need an explicit
 data migration before retiring the interim backend; none are embedded in GitHub.
+
+MIDP export now follows M1_MIDP_Consolidated_Live.xlsm structure.
+Macro-free XLSX: Summary, hidden Index/Data, Settings, one tab per asset,
+plus row-level TIDP provenance. All scoped TIDP rows remain deliverables.
+No export-layout database migration; the blank JSON layout is packaged with Django.

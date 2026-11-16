@@ -183,21 +183,6 @@ def export_merged(snapshot,filters):
     if (start or end) and (not start or not end or iso(start)!=start or iso(end)!=end or start>end):raise ValueError('Choose a valid planned-date range.')
     selected=[r for r in filter_rows(snapshot['entries'],filters) if not(start or end) or r.get('plannedDate') and start<=r['plannedDate']<=end]
     if not selected:raise ValueError('No deliverables match this export.')
-    wanted=defaultdict(set)
-    for r in selected:
-        for o in ([r] if r.get('rowDeliverable') else r['origins'] if r['conflict'] else r['origins'][:1]):wanted[(o['sourceId'],o['sheet'])].add(o['row'])
-    output=Workbook();output.remove(output.active);audit=[]
-    for i in range(snapshot['recordCount']):
-        record=Snapshot.objects.get(key='tidp:'+snapshot['generation']+':'+str(i)).data;src=record['source']
-        if not any(k[0]==src['itemId'] for k in wanted):continue
-        original=load_workbook(io.BytesIO(base64.b64decode(record['workbook'])),data_only=True,keep_links=False)
-        for sheet in original:
-            keep=wanted.get((src['itemId'],sheet.title))
-            if not keep:continue
-            asset=next(r['scopeAsset'] for r in record['entries'] if r['sheet']==sheet.title)
-            title=re.sub(r'[\\/*?:\[\]]','',f'{len(output.worksheets)+1} {asset} {sheet.title}')[:31]
-            copy_delivery_sheet(sheet,output.create_sheet(title),keep)
-        original.close();audit.append([src['name'],src['version'],src.get('updatedAt'),acc_link(src['itemId'])])
-    sheet=output.create_sheet('TIDP sources');sheet.append(['Source TIDP','ACC version','Last modified','ACC link'])
-    for r in audit:sheet.append(r)
-    data=io.BytesIO();output.save(data);output.close();return data.getvalue()
+    from .midp_export import export_consolidated
+    records=[Snapshot.objects.get(key='tidp:'+snapshot['generation']+':'+str(i)).data for i in range(snapshot['recordCount'])]
+    return export_consolidated(records,selected)

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {utils,write,read} from 'xlsx';
 import {extractTidp,mergeTidps,exportTidps,sourceScope} from '../tidp-merge.mjs';
 import {syncTidpBatch,tidpSnapshot} from '../tidp-sync.mjs';
+import {unzipSync,strFromU8} from 'fflate';
 const scope={revision:1,rows:[{id:'Island-A',code:'A',name:'Asset A',zone:'Island',aliases:['A'],ambiguous:[],proposed:'A',filename:'M1-FXX-SAP-A-05-LD000-LOD-XX-000001-R01_TIDP_A.xlsx'}]};
 const source=(id='a',version=1)=>({itemId:id,version,versionId:id+':'+version,name:scope.rows[0].filename,checkedAt:Date.now()});
 function fixture({planned='2026-11-16',approval='approved',outside=false}={}){
@@ -21,7 +22,7 @@ test('every TIDP row survives repeated names with its own dates and approval',()
 });
 test('merged workbook supports full and inclusive planned-date export with forecast and status',()=>{
  const r=extractTidp(fixture(),source(),scope),m=mergeTidps([r]);
- for(const range of [[null,null],['2026-11-16','2026-11-16']]){const out=exportTidps([r],m.entries,...range),wb=read(out.bytes,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];assert.equal(ws.BC4.v,'2026-11-16');assert.equal(ws.BD4.v,'2026-11-18');assert.equal(ws.BE4.v,'approved');assert(wb.Sheets['TIDP sources']);}
+ for(const range of [[null,null],['2026-11-16','2026-11-16']]){const out=exportTidps([r],m.entries,...range),wb=read(out.bytes,{type:'array',cellDates:true}),ws=wb.Sheets['Island-A'];assert.equal(ws.BD10.v.toISOString().slice(0,10),'2026-11-16');assert.equal(ws.BE10.v.toISOString().slice(0,10),'2026-11-18');assert.equal(ws.BC10.v,'approved');assert.equal(ws.A6.v,'DELIVERABLE (TITLE)');assert.equal(ws.BD6.v,'Planned Date');assert(wb.Sheets['Summary']);assert(wb.Sheets['TIDP sources']);}
  assert.throws(()=>exportTidps([r],m.entries,'2026-11-17','2026-11-18'),/No deliverables/);assert.throws(()=>exportTidps([r],m.entries,'2026-11-17','2026-11-16'),/valid/);
 });
 test('batches publish only a complete consistent set and retain prior data after failure',async()=>{
@@ -42,10 +43,10 @@ test('explicit formerly-code evidence in the TIDP introduction resolves renamed 
 
 test('row export keeps only matching dates and preserves identical duplicate rows',()=>{
  const a=extractTidp(fixture(),source(),scope),b=extractTidp(fixture({planned:'2026-11-19'}),source('b'),scope),m=mergeTidps([a,b]);
- const ranged=exportTidps([a,b],m.entries,'2026-11-19','2026-11-19'),book=read(ranged.bytes,{type:'array'});
- assert.equal(ranged.count,1);assert.equal(book.SheetNames.length,2);assert.equal(book.Sheets[book.SheetNames[0]].BC4.v,'2026-11-19');
+ const ranged=exportTidps([a,b],m.entries,'2026-11-19','2026-11-19'),book=read(ranged.bytes,{type:'array',cellDates:true});
+ assert.equal(ranged.count,1);assert.equal(book.SheetNames.length,6);assert.equal(book.Sheets['Island-A'].BD10.v.toISOString().slice(0,10),'2026-11-19');assert.equal(book.Sheets.Data['!ref'],'A1:BG2');
  const same=extractTidp(fixture(),source('same'),scope),full=exportTidps([a,same],mergeTidps([a,same]).entries);
- assert.equal(full.count,2);assert.equal(read(full.bytes,{type:'array'}).SheetNames.length,3);
+ assert.equal(full.count,2);const fullBook=read(full.bytes,{type:'array'});assert.equal(fullBook.SheetNames.length,6);assert.equal(fullBook.Sheets['Island-A'].A10.v,fullBook.Sheets['Island-A'].A11.v);assert.equal(fullBook.Sheets.Data['!ref'],'A1:BG3');
 });
 
 test('new TIDP versions remove duplicate warnings after source correction',async()=>{
@@ -53,4 +54,23 @@ test('new TIDP versions remove duplicate warnings after source correction',async
  let version=1;const services={list:async()=>['a','b'].map(id=>({id,name:source().name,versionId:id+':'+version})),download:async(_env,id)=>{let bytes=fixture();if(version===2&&id==='b'){const w=read(bytes,{type:'array'});w.Sheets.ARCH.A4.v=w.Sheets.ARCH.A4.v.replace('000001','000002');bytes=write(w,{type:'buffer',bookType:'xlsx'});}return {source:source(id,version),bytes};}};
  await syncTidpBatch(env,true,services);assert.equal((await tidpSnapshot(env)).affectedDocuments,2);
  version=2;await syncTidpBatch(env,true,services);const next=await tidpSnapshot(env);assert.equal(next.total,2);assert.equal(next.affectedDocuments,0);assert.equal(next.duplicateGroups,0);
+});
+
+test('consolidated asset tabs retain seven exchanges, formats and duplicate drawing counts',()=>{
+ const w=read(fixture(),{type:'array'}),s=w.Sheets.ARCH;
+ for(let i=0;i<7;i++)for(const [j,title] of ['Revision','Issue Date','Author','Transmittal Number'].entries()){
+  s[utils.encode_cell({r:0,c:26+i*4+j})]={t:'s',v:title};
+  s[utils.encode_cell({r:3,c:26+i*4+j})]={t:'s',v:j===1?'2026-11-'+String(10+i).padStart(2,'0'):j===0?'R0'+i:j===2?'Author '+i:'TR-'+i};
+ }
+ s.C2.v='rvt';s.D2.v='nwc';
+ s.A4.v=s.A4.v.replace('-BNM-','-DWG-');s.N1={t:'s',v:'Parent Model Reference Number'};s.N4={t:'s',v:'parent-001'};
+ s.W1={t:'s',v:'Document Unique Number'};s.W4={t:'s',v:'000001'};
+ utils.book_append_sheet(w,utils.aoa_to_sheet(utils.sheet_to_json(s,{header:1})),'STR');
+ const a=extractTidp(write(w,{type:'buffer',bookType:'xlsx'}),source(),scope),out=exportTidps([a],mergeTidps([a]).entries),book=read(out.bytes,{type:'array',cellDates:true}),asset=book.Sheets['Island-A'];
+ assert.equal(out.count,2);assert.equal(asset.E10.v,'Yes');assert.equal(asset.D10.v,'');assert.equal(asset.N10.v,'parent-001');assert.equal(asset.W10.v,'000001');
+ for(let i=0;i<7;i++){assert.equal(asset[utils.encode_cell({r:9,c:27+i*4})].v.toISOString().slice(0,10),'2026-11-'+String(10+i).padStart(2,'0'));assert.equal(asset[utils.encode_cell({r:9,c:29+i*4})].v,'TR-'+i);}
+ const summary=utils.sheet_to_json(book.Sheets.Summary,{header:1});assert.equal(summary.find(r=>r[0]==='Grand total (all drawing schedules)')[1],2);
+ assert.equal(book.Workbook.Sheets.find(s=>s.name==='Data').Hidden,1);
+ const parts=unzipSync(out.bytes);assert(!Object.keys(parts).some(k=>/vba|connections|externalLinks/.test(k)));
+ assert(!Object.values(parts).map(strFromU8).join('').includes('C:\\Users\\'));
 });

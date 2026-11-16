@@ -1,3 +1,4 @@
+import {exportConsolidated} from './midp-export.mjs';
 import {deliverableCategory} from './delivery-core.mjs';
 import {Unzip,UnzipInflate,unzipSync,strFromU8,zipSync,strToU8} from 'fflate';
 import {parseMidpDeliverables,inDateRange,dateRange} from './midp.mjs';
@@ -89,34 +90,9 @@ export function mergeTidps(records){
  }
  return {entries,total:entries.length,duplicates,conflicts,duplicateGroups,affectedDocuments:entries.filter(r=>r.duplicateCount>0).length,countBasis:'tidp-row'};
 }
-function styleMerger(){
- const tables={numFmts:[],fonts:[],fills:[],borders:[],cellStyleXfs:[],cellXfs:[]};let nextNum=164;
- const add=xml=>{const mapping={};for(const [name,child] of [['numFmts','numFmt'],['fonts','font'],['fills','fill'],['borders','border'],['cellStyleXfs','xf'],['cellXfs','xf']]){
-  const body=new RegExp('<'+name+'\\b[^>]*>([\\s\\S]*?)<\\/'+name+'>').exec(xml)?.[1]||'';mapping[name]={};
-  elements(body,child).forEach((tag,i)=>{let out=tag;const a=attrs(tag);if(name==='numFmts'){mapping[name][a.numFmtId]=nextNum;out=out.replace(/numFmtId="\d+"/,'numFmtId="'+nextNum+++'"');}else{mapping[name][i]=tables[name].length;if(child==='xf')for(const [attr,table] of [['fontId','fonts'],['fillId','fills'],['borderId','borders'],['numFmtId','numFmts'],['xfId','cellStyleXfs']])out=out.replace(new RegExp(attr+'="(\\d+)"'),(_,n)=>attr+'="'+(mapping[table]?.[n]??n)+'"');}tables[name].push(out);});
- }return mapping.cellXfs;};
- return {add,xml:()=>'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+Object.entries(tables).map(([n,v])=>'<'+n+' count="'+v.length+'">'+v.join('')+'</'+n+'>').join('')+'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'};
-}
 export function exportTidps(records,entries,start,end){
- const ranged=!!(start||end);if(ranged)dateRange(start,end);const selected=entries.filter(r=>!ranged||inDateRange(r,start,end));if(!selected.length)throw Error('No deliverables match this export.');
- const use=new Map();for(const r of selected)for(const o of (r.rowDeliverable?[r]:r.conflict?r.origins:r.origins.slice(0,1))){const k=o.sourceId+'|'+o.sheet;if(!use.has(k))use.set(k,new Set());use.get(k).add(o.row);}
- const styles=styleMerger(),parts={},sheets=[],theme=records.find(r=>r.theme)?.theme;let n=0;
- for(const record of records){if(!record.sheets.some(s=>use.has(record.source.itemId+'|'+s.name)))continue;const mapping=styles.add(record.styles);
-  for(const sheet of record.sheets){const wanted=use.get(record.source.itemId+'|'+sheet.name);if(!wanted)continue;n++;const dataRows=new Set(record.entries.filter(r=>r.sheet===sheet.name).map(r=>r.row));
-   let xml=sheet.xml.replace(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g,raw=>{const at=attrs(raw.split('>')[0]+'>'),row=+at.r;if(dataRows.has(row)&&!wanted.has(row))return '<row r="'+row+'" hidden="1"/>';return wanted.has(row)?raw.replace(/\s+hidden="[^"]*"/,''):raw;});
-   xml=xml.replace(/\b(s|style)="(\d+)"/g,(_,attr,id)=>attr+'="'+(mapping[id]??id)+'"');
-   const asset=record.entries.find(r=>r.sheet===sheet.name)?.scopeAsset||'TIDP',name=(n+' '+asset+' '+sheet.name).replace(/[\\/*?:\[\]]/g,'').slice(0,31);sheets.push({name,id:n});parts['xl/worksheets/sheet'+n+'.xml']=strToU8(xml);
-  }
- }
- if(!n)throw Error('TIDP export source is incomplete. Refresh and retry.');
- const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
- // A source register makes the merged file traceable without changing any ACC workbook.
- n++;sheets.push({name:'TIDP sources',id:n});const audit=[['Source TIDP','ACC version','Last modified','ACC link','Exported at','Duplicate conflicts'],...records.filter(r=>selected.some(e=>e.origins.some(o=>o.sourceId===r.source.itemId))).map(r=>[r.source.name,r.source.version,r.source.updatedAt,tidpUrl(r.source.itemId),new Date().toISOString(),selected.filter(e=>e.conflict&&e.origins.some(o=>o.sourceId===r.source.itemId)).map(e=>e.name+': '+e.conflictFields.join(', ')).join('; ')])];
- parts['xl/worksheets/sheet'+n+'.xml']=strToU8('<worksheet xmlns="'+ns+'"><cols><col min="1" max="6" width="35" customWidth="1"/></cols><sheetData>'+audit.map((r,i)=>'<row r="'+(i+1)+'">'+r.map((v,j)=>'<c r="'+String.fromCharCode(65+j)+(i+1)+'" t="inlineStr"><is><t>'+escapeXml(v)+'</t></is></c>').join('')+'</row>').join('')+'</sheetData></worksheet>');
- parts['xl/styles.xml']=strToU8(styles.xml());if(theme)parts['xl/theme/theme1.xml']=strToU8(theme);
- parts['xl/workbook.xml']=strToU8('<workbook xmlns="'+ns+'" xmlns:r="'+rel+'"><bookViews><workbookView/></bookViews><sheets>'+sheets.map(s=>'<sheet name="'+escapeXml(s.name)+'" sheetId="'+s.id+'" r:id="rId'+s.id+'"/>').join('')+'</sheets></workbook>');
- parts['xl/_rels/workbook.xml.rels']=strToU8('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map(s=>'<Relationship Id="rId'+s.id+'" Type="'+rel+'/worksheet" Target="worksheets/sheet'+s.id+'.xml"/>').join('')+'<Relationship Id="styles" Type="'+rel+'/styles" Target="styles.xml"/>'+(theme?'<Relationship Id="theme" Type="'+rel+'/theme" Target="theme/theme1.xml"/>':'')+'</Relationships>');
- parts['_rels/.rels']=strToU8('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="workbook" Type="'+rel+'/officeDocument" Target="xl/workbook.xml"/></Relationships>');
- parts['[Content_Types].xml']=strToU8('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+(theme?'<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>':'')+sheets.map(s=>'<Override PartName="/xl/worksheets/sheet'+s.id+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>');
- return {bytes:zipSync(parts,{level:1}),count:selected.length};
+ const ranged=!!(start||end);if(ranged)dateRange(start,end);
+ const selected=entries.filter(r=>!ranged||inDateRange(r,start,end));
+ if(!selected.length)throw Error('No deliverables match this export.');
+ return exportConsolidated(records,selected);
 }

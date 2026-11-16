@@ -25,7 +25,7 @@ class TidpTests(TestCase):
         snap={'generation':'test','recordCount':2,'entries':entries}
         for filters in [{},{'start':'2026-11-16','end':'2026-11-16'}]:
             out=export_merged(snap,filters);w=load_workbook(io.BytesIO(out),data_only=True)
-            self.assertEqual(len(w.worksheets),3);self.assertEqual(w.worksheets[0]['BE4'].value,'approved');self.assertEqual(w.worksheets[0]['BC4'].value.date(),date(2026,11,16));self.assertIsNone(w.worksheets[0]['A5'].value);w.close()
+            self.assertEqual(len(w.worksheets),6);self.assertEqual(w['Island-A']['BC10'].value,'approved');self.assertEqual(w['Island-A']['BD10'].value.date(),date(2026,11,16));self.assertEqual(w['Island-A']['A10'].value,w['Island-A']['A11'].value);self.assertEqual(w['Data'].max_row,3);self.assertEqual(w['Data'].sheet_state,'hidden');w.close()
         with self.assertRaises(ValueError):export_merged(snap,{'start':'2026-11-17','end':'2026-11-16'})
     def test_repeated_names_retain_each_rows_approval(self):
         entries=merge_sources([self.record(),self.record('b','rejected')])

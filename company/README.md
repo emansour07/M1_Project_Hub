@@ -126,3 +126,6 @@ M1 adds review submission/due/completion ranges, any tracker date field, analysi
 The scheduled workbook job assembles the MIDP from the current scoped Excel TIDPs in the main ACC folder, preserving the separate original-design MIDP baseline. It publishes a complete source set, including provenance and duplicate warnings. The MIDP Excel endpoint exports all filtered rows or an inclusive Planned-date range from that snapshot. Source workbooks remain read-only. Run the existing scheduled jobs after deployment; no new credential scope is required.
 
 TIDP row counting: parser version 3 preserves all scoped source rows, including repeated filenames. The shared Checker shows affected deliverables per discipline and links to the source sheet/row. Export filters apply to each row independently. Run a complete source synchronization after upgrading from version 2; the previous snapshot remains visible until then.
+
+
+Consolidated MIDP export uses `hub/midp_export.py` and the sanitized `hub/midp-layout.json`. Keep both files in every release/package. The XLSX has the approved Summary/asset-tab layout, all seven exchange groups, and approval/planned/forecast columns. It needs no desktop Excel or macros; no database migration is required for this export-layout update.
