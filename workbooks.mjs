@@ -5,7 +5,7 @@ import {filterDeliverables} from './delivery-core.mjs';
 import {read,utils} from 'xlsx';
 import {downloadWorkbook} from './sources.mjs';
 import {parseNamingRules} from './naming.mjs';
-import {parseScope,scopePolicy,scopedMapping,scopedFile,getScope} from './scope.mjs';
+import {parseScope,scopePolicy,scopedMapping,scopedFile,getScope,inOwnerScope} from './scope.mjs';
 import {parseMidpDeliverables,filterMidpWorkbook,dateRange} from './midp.mjs';
 const text=v=>String(v??'').trim();
 export function parseAssetRows(rows){
@@ -63,7 +63,7 @@ export function parseMidpRows(rows,sheet){
  }
  return result;
 }
-export async function workbookSnapshot(env,key){const saved=await env.BUCKET.get('m1/workbooks/'+key);return saved?await saved.json():null;}
+export async function workbookSnapshot(env,key){const saved=await env.BUCKET.get('m1/workbooks/'+key);const data=saved?await saved.json():null;if(data?.rows&&['tidp','scope','tracker','midp'].includes(key))data.rows=data.rows.filter(inOwnerScope);return data;}
 export function extractMidp(bytes){
  const names=read(bytes,{type:'array',bookSheets:true}).SheetNames.filter(n=>n!=='Index');if(names.length>80)throw Error('MIDP exceeds the sheet limit.');
  const rows=[],deliverables=[];

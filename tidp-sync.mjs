@@ -1,6 +1,6 @@
 import {accessToken,getAPS} from './forma.mjs';
 import {downloadItemWorkbook} from './sources.mjs';
-import {getScope} from './scope.mjs';
+import {getScope,inOwnerScope} from './scope.mjs';
 import {TIDP_FOLDER,sourceScope,extractTidp,mergeTidps,exportTidps} from './tidp-merge.mjs';
 import {filterDeliverables} from './delivery-core.mjs';
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate';
@@ -15,7 +15,7 @@ export async function listTidps(env,policy){
  if(!files.length)throw Error('No scoped TIDPs found in the main TIDP folder.');if(files.length>100)throw Error('TIDP folder exceeds 100 workbooks.');return files.sort((a,b)=>a.name.localeCompare(b.name));
 }
 export async function tidpStatus(env){const s=await read(env,'state');return s?{active:!!s.active,done:s.index||0,total:s.list?.length||0,failed:!!s.failed,checkedAt:s.checkedAt||null}:null;}
-export async function tidpSnapshot(env){const meta=await read(env,'latest');if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await read(env,meta.generation+'/entries/'+i);if(!chunk)throw Error('Merged TIDP register is incomplete.');entries.push(...chunk);}const {recordSources,...publicMeta}=meta;return {...publicMeta,entries,checking:await tidpStatus(env)};}
+export async function tidpSnapshot(env){const meta=await read(env,'latest');if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await read(env,meta.generation+'/entries/'+i);if(!chunk)throw Error('Merged TIDP register is incomplete.');entries.push(...chunk);}const {recordSources,...publicMeta}=meta,kept=entries.filter(inOwnerScope);return {...publicMeta,entries:kept,total:kept.length,dated:kept.filter(r=>r.plannedDate).length,missingSources:(meta.missingSources||[]).filter(inOwnerScope),checking:await tidpStatus(env)};}
 export async function syncTidpBatch(env,force=false,services={}){
  const policy=await getScope(env);if(!policy)throw Error('Scope is not ready.');let state=await read(env,'state');const now=Date.now();if(state?.leaseUntil>now)return {updating:true};if(!state?.active&&!force&&state?.checkedAt>now-900000)return {updating:false};
  if(!state?.active||state.scopeVersion!==policy.revision||state.parserVersion!==VERSION){state={parserVersion:VERSION,active:true,index:0,generation:crypto.randomUUID(),scopeVersion:policy.revision,leaseUntil:now+120000};await put(env,'state',state);try{state.list=await(services.list||listTidps)(env,policy);}catch(e){state.active=false;state.failed=true;state.leaseUntil=0;await put(env,'state',state);throw e;}}

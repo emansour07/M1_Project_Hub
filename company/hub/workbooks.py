@@ -33,6 +33,8 @@ def parse_scope(scope_rows, mapping):
     result = []
     for row in scope_rows[h+1:]:
         ident,code,name,filename = (cell(row,k) for k in ['Scope ID','Scope code','Asset','Corrected filename'])
+        # Owner-confirmed exclusion; never modify the source scope workbook.
+        if ident.upper() == 'ISLAND-A51': continue
         if not ident or not code or not name or not filename.upper().startswith('M1-'): continue
         parts = filename.upper().split('-')
         parcel = parts[1]
@@ -217,7 +219,7 @@ def tracker_data(data,scope,midp,src):
     columns += [c for c in LEAD if not any(x['key']==c['key'] for x in columns)]
     for key,e in expected.items():
         if key in known: continue
-        result.append({**e,'id':'midp:'+e['id'],'key':key,'row':None,'missingFromTracker':True,'midp':True,'origin':'MIDP — not in tracker',
+        result.append({**e,'id':'midp:'+e['id'],'key':key,'row':None,'missingFromTracker':True,'midp':True,'origin':'MIDP â€” not in tracker',
             'discipline':discipline(e['name']),'files':[],'fields':{c['key']:e['name'] if c['label']=='Name' else e['description'] if c['label']=='Description' else None for c in columns}})
     wb.close();values.close()
     return {'source':src,'columns':columns,'rows':result,'expectedModels':len(expected),'missingFromTracker':sum(r['missingFromTracker'] for r in result)}

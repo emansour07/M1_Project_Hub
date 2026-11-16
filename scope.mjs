@@ -1,18 +1,20 @@
 const text=v=>String(v??'').trim();
 const upper=v=>text(v).toUpperCase();
+// Owner-confirmed scope exclusion, 16 November 2026; source workbooks remain read-only.
+export const inOwnerScope=row=>![row.id,row.scopeId].some(id=>upper(id)==='ISLAND-A51');
 export const SCOPE_URL='https://acc.autodesk.eu/docs/files/projects/e80ed581-2f73-4b70-a8d1-f100b9b95f4d?folderUrn=urn%3Aadsk.wipemea%3Afs.folder%3Aco.c_IFywLjRpKsXt6H-JM1IA&entityId=urn%3Aadsk.wipemea%3Adm.lineage%3AsIrhtKWeRjCdGN3fs-vrpg&viewModel=detail&moduleId=folders';
 export function parseScope(rows){
  const h=rows.findIndex(r=>r.includes('Scope ID')&&r.includes('Corrected filename'));if(h<0)throw Error('Scope mapping columns were not found.');
  const header=rows[h],col=n=>header.indexOf(n),result=[];
  for(const r of rows.slice(h+1)){
-  const id=text(r[col('Scope ID')]),code=upper(r[col('Scope code')]),name=text(r[col('Asset')]),zone=text(r[col('Zone')]),filename=text(r[col('Corrected filename')]);if(!id||!code||!name||!/^M1-/i.test(filename))continue;
+  const id=text(r[col('Scope ID')]),code=upper(r[col('Scope code')]),name=text(r[col('Asset')]),zone=text(r[col('Zone')]),filename=text(r[col('Corrected filename')]);if(!id||!code||!name||!/^M1-/i.test(filename)||!inOwnerScope({id}))continue;
   const original=text(r[col('Original main-folder workbook')]).split(/[\\/]/).pop(),legacy=/^M1-/i.test(original||'')?upper(original.split('-')[3]):null;
   result.push({id,code,name,zone,party:text(r[col('Party')]),parcel:upper(filename.split('-')[1]),aliases:[...new Set([code,legacy].filter(c=>c&&!['XXX','YYY','ZZZ'].includes(c)))],filename});
  }
  if(!result.length||new Set(result.map(r=>r.id)).size!==result.length)throw Error('Scope list is empty or has duplicate IDs.');return result;
 }
 export function scopePolicy(scopeRows,mapping){
- const rows=scopeRows.map(s=>{
+ const rows=scopeRows.filter(inOwnerScope).map(s=>{
   const section=s.parcel==='102'?'10.2':s.parcel==='121'?'12.1':'',local=mapping.filter(m=>!section||m.section===section);
   // The scope's main code is authoritative; historical file paths are aliases,
   // never evidence for choosing a different proposed code.
@@ -53,7 +55,7 @@ export function scopeMatch(file,policy){
 }
 export function scopedFile(file,policy){const match=scopeMatch(file,policy);return match?{...file,scopeId:match.id,scopeAsset:match.proposed&&!['XXX','YYY','ZZZ'].includes(match.proposed)?match.proposed:match.id,scopeName:match.name}:null;}
 export function scopedMapping(policy){return (policy?.rows||[]).map(r=>({section:r.section||r.zone,existing:r.code,proposed:r.proposed||r.code,name:r.name,scopeId:r.id,mappingPending:!r.proposed,ambiguous:r.ambiguous}));}
-export async function getScope(env){return await(await env.BUCKET.get('m1/scope'))?.json()||null;}
+export async function getScope(env){const saved=await(await env.BUCKET.get('m1/scope'))?.json()||null;if(!saved)return null;const rows=saved.rows.filter(inOwnerScope);return rows.length===saved.rows.length?saved:{...saved,rows,revision:saved.revision+'-exclude-a51'};}
 export function visitScopeFolder(name,trail,policy){
  if(!policy)return false;
  const named=/^(?:(102|121)[ _-])([A-Z0-9]{2,5})(?:[ _-]|$)/i.exec(name);

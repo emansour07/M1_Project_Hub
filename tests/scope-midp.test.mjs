@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate';
-import {parseScope,scopePolicy,scopeMatch,scopedFile,scopedReview} from '../scope.mjs';
+import {parseScope,scopePolicy,scopeMatch,scopedFile,scopedReview,getScope} from '../scope.mjs';
 import {issueDate,parseMidpDeliverables,inDateRange,dateRange,filterMidpWorkbook} from '../midp.mjs';
 const scopeRows=[{id:'Island-A48',code:'A48',name:'Control room',zone:'Island',parcel:'102',aliases:['A48']},{id:'Mainland-WT2',code:'WT2',name:'Water tank',zone:'Mainland',parcel:'121',aliases:['WT2','W02']}];
 const mapping=[{section:'10.2',existing:'A48',proposed:'CRA',name:'Control room'},{section:'12.1',existing:'A48',proposed:'GS5',name:'Other building'},{section:'12.1',existing:'A01',proposed:'GS1',name:'Outside scope'}];
@@ -42,3 +42,13 @@ test('MIDP export physically removes excluded deliverables and sheets while reta
 });
 
 test('MIDP uses named planned and forecast columns, never issue date as an export fallback',()=>{const rows=[['Title','Description','Issue Date','Planned Submission Date','Forecast Date'],['M1-FXX-SAP-CRA-05-BM010-BNM-XX-000001','Model','2026-12-01','2026-11-13',46340],['M1-FXX-SAP-CRA-05-BM010-BNM-XX-000002','Model','2026-11-13','','2026-11-14']];const [a,b]=parseMidpDeliverables(rows,'CRA');assert.equal(a.plannedDate,'2026-11-13');assert.equal(a.forecastDate,'2026-11-14');assert.equal(inDateRange(a,'2026-11-13','2026-11-13'),true);assert.equal(inDateRange(a,'2026-12-01','2026-12-01'),false);assert.equal(inDateRange(b,'2026-11-13','2026-11-14'),false);assert.equal(b.forecastDate,'2026-11-14');});
+
+
+test('owner excludes A51 from both fresh and cached scope without editing source data',async()=>{
+ const a51={id:'Island-A51',code:'A51',name:'Electrical substation',zone:'Island',parcel:'102',aliases:['A51']};
+ const original={rows:[...scopeRows,a51],revision:'old'};
+ assert.equal(scopePolicy(original.rows,mapping).rows.some(r=>r.id===a51.id),false);
+ const env={BUCKET:{get:async()=>({json:async()=>original})}};
+ const current=await getScope(env);assert.equal(current.rows.length,2);assert.equal(original.rows.length,3);
+ assert.notEqual(current.revision,original.revision);
+});
