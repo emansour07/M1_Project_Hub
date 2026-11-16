@@ -1,5 +1,5 @@
 import {deliverableCategory} from './delivery-core.mjs';
-import {Unzip,UnzipInflate,zipSync,strToU8} from 'fflate';
+import {Unzip,UnzipInflate,unzipSync,strFromU8,zipSync,strToU8} from 'fflate';
 import {parseMidpDeliverables,inDateRange,dateRange} from './midp.mjs';
 import {scopeMatch,scopedFile} from './scope.mjs';
 export const TIDP_FOLDER='urn:adsk.wipemea:fs.folder:co.3hNWncQDQZqVV9YPTm7Pyg';
@@ -32,8 +32,24 @@ export function sourceScope(name,policy){
  const direct=policy.rows.filter(r=>r.filename.toUpperCase()===name.toUpperCase());
  return direct.length===1?direct[0]:scopeMatch({name,folderPath:[name.replaceAll('_',' ')]},policy);
 }
+export function introductionScope(bytes,source,policy){
+ const known=sourceScope(source.name,policy);if(known)return known;
+ const meta=unzipSync(bytes,{filter:f=>['xl/workbook.xml','xl/_rels/workbook.xml.rels','xl/sharedStrings.xml'].includes(f.name)&&f.originalSize<10000000}),xml=k=>meta[k]?strFromU8(meta[k]):'';
+ const intro=elements(xml('xl/workbook.xml'),'sheet').map(attrs).find(a=>a.name==='Introduction');if(!intro)return null;
+ const target=elements(xml('xl/_rels/workbook.xml.rels'),'Relationship').map(attrs).find(a=>a.Id===intro['r:id'])?.Target;if(!target)return null;
+ const path=target.startsWith('/')?target.slice(1):'xl/'+target;if(path.includes('..'))return null;
+ const part=unzipSync(bytes,{filter:f=>f.name===path&&f.originalSize<1000000})[path];if(!part)return null;
+ const strings=elements(xml('xl/sharedStrings.xml'),'si').map(plain);let description='';
+ for(const row of elements(strFromU8(part),'row')){const values=elements(row,'c').map(c=>{const a=attrs(c.split('>')[0]+'>'),v=/<v>(.*?)<\/v>/.exec(c)?.[1];return a.t==='s'?strings[+v]:plain(c)||decode(v||'');});const i=values.findIndex(v=>/^Asset\s*\/\s*Building$/i.test(text(v)));if(i>=0){description=values.slice(i+1).join(' ');break;}}
+ const formerly=/\bFormerly\s+([^)]*)/i.exec(description)?.[1],code=source.name.toUpperCase().split('-')[3];if(!formerly||!code||['XXX','YYY','BIM','GEN'].includes(code))return null;
+ const old=formerly.toUpperCase().split(/[^A-Z0-9]+/),zone=/\bSubsea\b/i.test(description)?'Subsea':/\bMainland\b/i.test(description)?'Mainland':/\bIsland\b/i.test(description)?'Island':null;
+ const candidates=policy.rows.filter(s=>(!zone||s.zone===zone)&&old.some(c=>s.aliases.includes(c)||s.code===c));
+ if(candidates.length!==1)return null;
+ return {...candidates[0],proposed:code,aliases:[...new Set([...candidates[0].aliases,code])],mappingEvidence:description};
+}
 export function extractTidp(bytes,source,policy){
- const context=sourceScope(source.name,policy);if(!context)return {source,entries:[],sheets:[],styles:"",theme:""};
+ const context=introductionScope(bytes,source,policy);if(!context)return {source,entries:[],sheets:[],styles:"",theme:""};
+ policy={...policy,rows:policy.rows.map(s=>s.id===context.id?context:s)};
  const parts=readParts(bytes);const xml=k=>parts[k]||'',strings=elements(xml('xl/sharedStrings.xml'),'si').map(plain),wb=xml('xl/workbook.xml');
  if(/date1904="(?:1|true)"/.test(wb))throw Error('TIDP uses a different date system. Convert its date system before merging.');
  const targets=new Map(elements(xml('xl/_rels/workbook.xml.rels'),'Relationship').map(t=>{const a=attrs(t);return [a.Id,a.Target];})),sheets=[],entries=[];
@@ -58,7 +74,7 @@ export function extractTidp(bytes,source,policy){
   sheets.push({name:a.name,xml:clean});entries.push(...parsed);
  }
  if(!entries.length)throw Error('No scoped deliverables were found in '+source.name+'.');
- return {source,entries,sheets,styles:xml('xl/styles.xml'),theme:xml('xl/theme/theme1.xml')};
+ return {source,scopeId:context.id,mappingEvidence:context.mappingEvidence||null,entries,sheets,styles:xml('xl/styles.xml'),theme:xml('xl/theme/theme1.xml')};
 }
 export function mergeTidps(records){
  const grouped=new Map();for(const record of records)for(const raw of record.entries){const r={...raw,category:deliverableCategory(raw)};const key=r.scopeId+'|'+r.name.toUpperCase();if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(r);}

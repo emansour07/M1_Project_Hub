@@ -30,3 +30,11 @@ test('batches publish only a complete consistent set and retain prior data after
  await syncTidpBatch(env,true,services);assert.equal(await tidpSnapshot(env),null);await syncTidpBatch(env,true,services);assert.equal((await tidpSnapshot(env)).total,1);
  const published=(await tidpSnapshot(env)).generation;version=2;await syncTidpBatch(env,true,services);version=3;await assert.rejects(syncTidpBatch(env,true,services),/changed during/);assert.equal((await tidpSnapshot(env)).generation,published);
 });
+
+test('explicit formerly-code evidence in the TIDP introduction resolves renamed scoped assets',()=>{
+ const wb=read(fixture(),{type:'array'});const ws=wb.Sheets.ARCH;ws.A4.v=ws.A4.v.replace('-SAP-A-','-SAP-NEW-');ws.R4.v='NEW';
+ utils.book_append_sheet(wb,utils.aoa_to_sheet([['Asset / Building','NEW - Updated asset | Island (Formerly A)']]),'Introduction');
+ const src={...source('new'),name:source().name.replace('-SAP-A-','-SAP-NEW-')};
+ const r=extractTidp(write(wb,{type:'buffer',bookType:'xlsx'}),src,scope);
+ assert.equal(r.scopeId,'Island-A');assert.equal(r.entries[0].scopeAsset,'NEW');assert.match(r.mappingEvidence,/Formerly A/);
+});

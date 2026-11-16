@@ -84,7 +84,7 @@ M1 adds review submission/due/completion ranges, any tracker date field, analysi
 
 ## MIDP assembled from current TIDPs
 
-The MIDP register now reads the latest versions of scoped `_TIDP_*.xlsx` items directly from the main ACC `2.1_TIDP` folder. Temporary subfolders and unscoped files are excluded. The four original MIDPs used for original-model analysis are a separate baseline. No source Excel is edited.
+The MIDP register now reads the latest versions of scoped `_TIDP_*.xlsx` items directly from the main ACC `2.1_TIDP` folder. Temporary subfolders and unscoped files are excluded. Renamed assets are also resolved when a TIDP Introduction explicitly states a unique former scope code and zone; no name similarity is used to guess a mapping. The four original MIDPs used for original-model analysis are a separate baseline. No source Excel is edited.
 
 Cloudflare checks the source list every 15 minutes after a completed merge and processes changed workbooks in bounded batches. The last complete merge remains visible until all sources pass parsing and version verification. Unchanged versions are reused. The initial merge takes several batches; Refresh advances it. Individual rows link to their source TIDP. Missing scope sources and conflicting duplicate filenames are reported; conflicting approval/date values are left blank, never guessed.
 

@@ -37,7 +37,7 @@ def current_sources(client,scope):
     result=[]
     for item in client.contents(FOLDER):
         name=item.get('attributes',{}).get('displayName') or item.get('attributes',{}).get('name','')
-        if item['type']=='items' and re.search(r'_TIDP_.+\.xlsx$',name,re.I) and source_scope(name,scope):
+        if item['type']=='items' and re.search(r'_TIDP_.+\.xlsx$',name,re.I):
             result.append({'id':item['id'],'name':name,'versionId':item.get('relationships',{}).get('tip',{}).get('data',{}).get('id')})
     if not result or len(result)>100:raise ValueError('The current TIDP folder must contain 1–100 scoped workbooks.')
     return sorted(result,key=lambda x:x['name'])
@@ -99,8 +99,31 @@ def copy_delivery_sheet(original,target,wanted):
     target.sheet_format=copy(original.sheet_format)
     target.page_margins=copy(original.page_margins);target.page_setup=copy(original.page_setup);target.print_options=copy(original.print_options)
 
+def introduction_scope(data,src,scope):
+    context=source_scope(src['name'],scope)
+    if context:return context
+    w=load_workbook(io.BytesIO(data),read_only=True,data_only=True,keep_links=False)
+    description=''
+    if 'Introduction' in w:
+        for row in w['Introduction'].iter_rows(max_row=40,max_col=5,values_only=True):
+            for i,v in enumerate(row):
+                if re.fullmatch(r'Asset\s*/\s*Building',str(v or ''),re.I):description=' '.join(str(v or '') for v in row[i+1:])
+    w.close()
+    old=re.search(r'Formerly\s+([^)]*)',description,re.I)
+    if not old:return None
+    code=src['name'].upper().split('-')[3]
+    if code in ['XXX','YYY','BIM','GEN']:return None
+    zone=next((z for z in ['Subsea','Mainland','Island'] if re.search(r'\b'+z+r'\b',description,re.I)),None)
+    tokens=re.split(r'[^A-Z0-9]+',old[1].upper())
+    matches=[r for r in scope if (not zone or r['zone']==zone) and any(t in r['aliases'] or t==r['code'] for t in tokens)]
+    if len(matches)!=1:return None
+    return {**matches[0],'proposed':code,'aliases':list(set(matches[0]['aliases']+[code])),'mappingEvidence':description}
+
 def extract_source(data,src,scope):
-    compact=compact_workbook(data);context=source_scope(src['name'],scope)
+    context=introduction_scope(data,src,scope)
+    if not context:return {'source':src,'scopeId':None,'entries':[],'workbook':''}
+    scope=[context if s['id']==context['id'] else s for s in scope]
+    compact=compact_workbook(data)
     entries=midp_entries(compact,scope,[context['zone'],context['code'],src['name'].replace('_',' ')])
     if not entries:raise ValueError('No scoped deliverables in '+src['name'])
     for row in entries:
@@ -112,7 +135,7 @@ def extract_source(data,src,scope):
         wanted={r['row'] for r in entries if r['sheet']==sheet.title}
         if wanted:copy_delivery_sheet(sheet,output.create_sheet(sheet.title),wanted)
     data=io.BytesIO();output.save(data);original.close();output.close()
-    return {'source':src,'entries':entries,'workbook':base64.b64encode(data.getvalue()).decode()}
+    return {'source':src,'scopeId':context['id'],'entries':entries,'workbook':base64.b64encode(data.getvalue()).decode()}
 
 def merge_sources(records):
     groups=defaultdict(list)
@@ -135,7 +158,7 @@ def sync_tidps(client,scope,persist=True):
     previous=Snapshot.objects.filter(key='midp').first() if persist else None
     previous=previous.data if previous else {}
     cached={}
-    if previous.get('scopeFingerprint')==fingerprint:
+    if previous.get('scopeFingerprint')==fingerprint and previous.get('parserVersion')==2:
         for record in Snapshot.objects.filter(key__startswith='tidp:'+previous['generation']+':'):
             cached[record.data['source']['itemId']]=record.data
     for item in sources:
@@ -145,8 +168,8 @@ def sync_tidps(client,scope,persist=True):
     check={i['id']:i['versionId'] for i in current_sources(client,scope)}
     if len(check)!=len(records) or any(r['source']['itemId'] not in check or check[r['source']['itemId']] and check[r['source']['itemId']]!=r['source']['versionId'] for r in records):raise ValueError('TIDPs changed during refresh; the previous MIDP is retained.')
     entries=merge_sources(records);checked=int(time.time()*1000)
-    found={source_scope(r['source']['name'],scope)['id'] for r in records}
-    result={'source':{'kind':'tidp-merge','name':'MIDP from current TIDPs','version':generation,'checkedAt':checked,'sources':[r['source'] for r in records]},'generation':generation,'scopeFingerprint':fingerprint,'entries':entries,'total':len(entries),'dated':sum(bool(r['plannedDate']) for r in entries),'duplicates':sum(r['duplicateCount'] for r in entries),'conflicts':sum(r['conflict'] for r in entries),'missingSources':[{'id':s['id'],'name':s['name'],'code':s['code']} for s in scope if s['id'] not in found],'parserVersion':1}
+    found={r['scopeId'] for r in records if r['scopeId']}
+    result={'source':{'kind':'tidp-merge','name':'MIDP from current TIDPs','version':generation,'checkedAt':checked,'sources':[r['source'] for r in records if r['entries']]},'generation':generation,'scopeFingerprint':fingerprint,'entries':entries,'total':len(entries),'dated':sum(bool(r['plannedDate']) for r in entries),'duplicates':sum(r['duplicateCount'] for r in entries),'conflicts':sum(r['conflict'] for r in entries),'missingSources':[{'id':s['id'],'name':s['name'],'code':s['code']} for s in scope if s['id'] not in found],'parserVersion':2}
     if persist:
         with transaction.atomic():
             for i,record in enumerate(records):Snapshot.objects.update_or_create(key='tidp:'+generation+':'+str(i),defaults={'data':record})
