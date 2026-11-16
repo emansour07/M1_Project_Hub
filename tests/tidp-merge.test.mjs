@@ -15,9 +15,9 @@ test('TIDP merge reads schedules, status and provenance, retains only scoped row
  const r=extractTidp(fixture({outside:true}),source(),scope);assert.equal(r.entries.length,1);assert.equal(r.entries[0].plannedDate,'2026-11-16');assert.equal(r.entries[0].forecastDate,'2026-11-18');assert.equal(r.entries[0].approvalStatus,'approved');assert.match(r.entries[0].sourceUrl,/entityId=a/);assert(!r.sheets[0].xml.includes('Outside scope'));
  assert.equal(sourceScope('M1-FXX-SAP-OTHER-05-LD000-LOD-XX-000001_TIDP_OTHER.xlsx',scope),null);
 });
-test('identical duplicate names count once and conflicting approval/date is not guessed',()=>{
- const a=extractTidp(fixture(),source(),scope),b=extractTidp(fixture(),source('b'),scope);let m=mergeTidps([a,b]);assert.equal(m.total,1);assert.equal(m.duplicates,1);assert.equal(m.conflicts,0);
- const c=extractTidp(fixture({planned:'2026-11-19',approval:'rejected'}),source('c'),scope);m=mergeTidps([a,c]);assert.equal(m.conflicts,1);assert.equal(m.entries[0].plannedDate,null);assert.equal(m.entries[0].approvalStatus,'');assert.equal(m.entries[0].origins.length,2);
+test('every TIDP row survives repeated names with its own dates and approval',()=>{
+ const a=extractTidp(fixture(),source(),scope),b=extractTidp(fixture(),source('b'),scope);let m=mergeTidps([a,b]);assert.equal(m.total,2);assert.equal(m.duplicates,1);assert.equal(m.conflicts,0);
+ const c=extractTidp(fixture({planned:'2026-11-19',approval:'rejected'}),source('c'),scope);m=mergeTidps([a,c]);assert.equal(m.conflicts,1);assert.deepEqual(m.entries.map(r=>r.plannedDate),['2026-11-16','2026-11-19']);assert.deepEqual(m.entries.map(r=>r.approvalStatus),['approved','rejected']);assert.equal(m.affectedDocuments,2);assert.equal(m.duplicateGroups,1);assert.equal(m.entries[0].origins.length,2);
 });
 test('merged workbook supports full and inclusive planned-date export with forecast and status',()=>{
  const r=extractTidp(fixture(),source(),scope),m=mergeTidps([r]);
@@ -27,7 +27,7 @@ test('merged workbook supports full and inclusive planned-date export with forec
 test('batches publish only a complete consistent set and retain prior data after failure',async()=>{
  const objects=new Map([['m1/scope',JSON.stringify(scope)]]),env={BUCKET:{get:async k=>objects.has(k)?{json:async()=>JSON.parse(objects.get(k))}:null,put:async(k,v)=>objects.set(k,v)}};
  let version=1;const services={batchSize:1,list:async()=>[{id:'a',name:source().name,versionId:'a:'+version},{id:'b',name:source().name,versionId:'b:'+version}],download:async(_env,id)=>({source:source(id,version),bytes:fixture()})};
- await syncTidpBatch(env,true,services);assert.equal(await tidpSnapshot(env),null);await syncTidpBatch(env,true,services);assert.equal((await tidpSnapshot(env)).total,1);
+ await syncTidpBatch(env,true,services);assert.equal(await tidpSnapshot(env),null);await syncTidpBatch(env,true,services);assert.equal((await tidpSnapshot(env)).total,2);
  const published=(await tidpSnapshot(env)).generation;version=2;await syncTidpBatch(env,true,services);version=3;await assert.rejects(syncTidpBatch(env,true,services),/changed during/);assert.equal((await tidpSnapshot(env)).generation,published);
 });
 
@@ -37,4 +37,20 @@ test('explicit formerly-code evidence in the TIDP introduction resolves renamed 
  const src={...source('new'),name:source().name.replace('-SAP-A-','-SAP-NEW-')};
  const r=extractTidp(write(wb,{type:'buffer',bookType:'xlsx'}),src,scope);
  assert.equal(r.scopeId,'Island-A');assert.equal(r.entries[0].scopeAsset,'NEW');assert.match(r.mappingEvidence,/Formerly A/);
+});
+
+
+test('row export keeps only matching dates and preserves identical duplicate rows',()=>{
+ const a=extractTidp(fixture(),source(),scope),b=extractTidp(fixture({planned:'2026-11-19'}),source('b'),scope),m=mergeTidps([a,b]);
+ const ranged=exportTidps([a,b],m.entries,'2026-11-19','2026-11-19'),book=read(ranged.bytes,{type:'array'});
+ assert.equal(ranged.count,1);assert.equal(book.SheetNames.length,2);assert.equal(book.Sheets[book.SheetNames[0]].BC4.v,'2026-11-19');
+ const same=extractTidp(fixture(),source('same'),scope),full=exportTidps([a,same],mergeTidps([a,same]).entries);
+ assert.equal(full.count,2);assert.equal(read(full.bytes,{type:'array'}).SheetNames.length,3);
+});
+
+test('new TIDP versions remove duplicate warnings after source correction',async()=>{
+ const objects=new Map([['m1/scope',JSON.stringify(scope)]]),env={BUCKET:{get:async k=>objects.has(k)?{json:async()=>JSON.parse(objects.get(k))}:null,put:async(k,v)=>objects.set(k,v)}};
+ let version=1;const services={list:async()=>['a','b'].map(id=>({id,name:source().name,versionId:id+':'+version})),download:async(_env,id)=>{let bytes=fixture();if(version===2&&id==='b'){const w=read(bytes,{type:'array'});w.Sheets.ARCH.A4.v=w.Sheets.ARCH.A4.v.replace('000001','000002');bytes=write(w,{type:'buffer',bookType:'xlsx'});}return {source:source(id,version),bytes};}};
+ await syncTidpBatch(env,true,services);assert.equal((await tidpSnapshot(env)).affectedDocuments,2);
+ version=2;await syncTidpBatch(env,true,services);const next=await tidpSnapshot(env);assert.equal(next.total,2);assert.equal(next.affectedDocuments,0);assert.equal(next.duplicateGroups,0);
 });

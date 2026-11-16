@@ -18,15 +18,21 @@ class TidpTests(TestCase):
         return extract_source(output.getvalue(),{'name':self.scope[0]['filename'],'itemId':ident,'version':1},self.scope)
     def test_merge_and_formatted_full_or_date_export(self):
         a=self.record();b=self.record('b');entries=merge_sources([a,b])
-        self.assertEqual(len(entries),1);self.assertEqual(entries[0]['duplicateCount'],1)
+        self.assertEqual(len(entries),2);self.assertEqual(entries[0]['duplicateCount'],1)
         self.assertEqual(entries[0]['plannedDate'],'2026-11-16');self.assertEqual(entries[0]['forecastDate'],'2026-11-18')
         self.assertFalse(entries[0]['conflict'])
         Snapshot.objects.create(key='tidp:test:0',data=a);Snapshot.objects.create(key='tidp:test:1',data=b)
         snap={'generation':'test','recordCount':2,'entries':entries}
         for filters in [{},{'start':'2026-11-16','end':'2026-11-16'}]:
             out=export_merged(snap,filters);w=load_workbook(io.BytesIO(out),data_only=True)
-            self.assertEqual(w.worksheets[0]['BE4'].value,'approved');self.assertEqual(w.worksheets[0]['BC4'].value.date(),date(2026,11,16));self.assertIsNone(w.worksheets[0]['A5'].value);w.close()
+            self.assertEqual(len(w.worksheets),3);self.assertEqual(w.worksheets[0]['BE4'].value,'approved');self.assertEqual(w.worksheets[0]['BC4'].value.date(),date(2026,11,16));self.assertIsNone(w.worksheets[0]['A5'].value);w.close()
         with self.assertRaises(ValueError):export_merged(snap,{'start':'2026-11-17','end':'2026-11-16'})
-    def test_conflicting_approval_never_chosen_automatically(self):
+    def test_repeated_names_retain_each_rows_approval(self):
         entries=merge_sources([self.record(),self.record('b','rejected')])
-        self.assertEqual(len(entries),1);self.assertTrue(entries[0]['conflict']);self.assertEqual(entries[0]['approvalStatus'],'')
+        self.assertEqual(len(entries),2);self.assertTrue(entries[0]['conflict']);self.assertEqual([r['approvalStatus'] for r in entries],['approved','rejected'])
+
+    def test_source_rename_clears_affected_rows(self):
+        a=self.record();b=self.record('b')
+        self.assertEqual(sum(bool(r['duplicateCount']) for r in merge_sources([a,b])),2)
+        b['entries'][0]['name']=b['entries'][0]['name'].replace('000001','000002')
+        rows=merge_sources([a,b]);self.assertEqual(len(rows),2);self.assertEqual(sum(bool(r['duplicateCount']) for r in rows),0)

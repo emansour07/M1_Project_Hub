@@ -6,9 +6,10 @@ def calculate(entries,policy):
     enabled=bool(policy and policy.enabled and policy.denominator_confirmed and approved)
     groups=defaultdict(dict)
     for row in entries:
-        # One deliverable per MIDP filename; exchange formats do not multiply the denominator.
+        # TIDP rows count separately; formats within each row do not multiply it.
         key=row['name'].strip().casefold()
         if row.get('category')=='Models':key=re.sub(r'\.(rvt|ifc|nwc|nwd|dwfx|dwg)$','',key)
+        if row.get('rowDeliverable'):key=row['id']
         groups[row['scopeId']].setdefault(key,[]).append(row)
     result={}
     for asset,documents in groups.items():

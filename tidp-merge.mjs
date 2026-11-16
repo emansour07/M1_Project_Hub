@@ -78,14 +78,16 @@ export function extractTidp(bytes,source,policy){
 }
 export function mergeTidps(records){
  const grouped=new Map();for(const record of records)for(const raw of record.entries){const r={...raw,category:deliverableCategory(raw)};const key=r.scopeId+'|'+r.name.toUpperCase();if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(r);}
- const entries=[];for(const variants of grouped.values()){
-  const r={...variants[0],origins:variants.map(x=>({id:x.id,sourceId:x.sourceId,sourceName:x.sourceName,sourceVersion:x.sourceVersion,sourceUrl:x.sourceUrl,sheet:x.sheet,row:x.row})),conflictFields:[]};
+ const entries=[];let duplicates=0,conflicts=0,duplicateGroups=0;for(const [duplicateKey,variants] of grouped){
+  const origins=variants.map(x=>({id:x.id,sourceId:x.sourceId,sourceName:x.sourceName,sourceVersion:x.sourceVersion,sourceUrl:x.sourceUrl,sheet:x.sheet,row:x.row})),conflictFields=[];
   for(const field of ['description','category','discipline','originator','plannedDate','forecastDate','approvalStatus','projectStage','latestIssueDate','revision','formats','exchanges']){
-   if(new Set(variants.map(x=>JSON.stringify(x[field]))).size>1){r.conflictFields.push(field);if(['plannedDate','forecastDate','latestIssueDate','revision'].includes(field))r[field]=null;else if(['approvalStatus','projectStage'].includes(field))r[field]='';}
+   if(new Set(variants.map(x=>JSON.stringify(x[field]))).size>1)conflictFields.push(field);
   }
-  r.duplicateCount=variants.length-1;r.conflict=r.conflictFields.length>0;entries.push(r);
+  duplicates+=variants.length-1;duplicateGroups+=variants.length>1?1:0;conflicts+=conflictFields.length>0?1:0;
+  // Row identity owns its values; repeated filenames never collapse deliverables.
+  for(const r of variants)entries.push({...r,rowDeliverable:true,origins,duplicateKey,duplicateCount:variants.length-1,conflictFields,conflict:conflictFields.length>0});
  }
- return {entries,total:entries.length,duplicates:entries.reduce((n,r)=>n+r.duplicateCount,0),conflicts:entries.filter(r=>r.conflict).length};
+ return {entries,total:entries.length,duplicates,conflicts,duplicateGroups,affectedDocuments:entries.filter(r=>r.duplicateCount>0).length,countBasis:'tidp-row'};
 }
 function styleMerger(){
  const tables={numFmts:[],fonts:[],fills:[],borders:[],cellStyleXfs:[],cellXfs:[]};let nextNum=164;
@@ -97,7 +99,7 @@ function styleMerger(){
 }
 export function exportTidps(records,entries,start,end){
  const ranged=!!(start||end);if(ranged)dateRange(start,end);const selected=entries.filter(r=>!ranged||inDateRange(r,start,end));if(!selected.length)throw Error('No deliverables match this export.');
- const use=new Map();for(const r of selected)for(const o of (r.conflict?r.origins:r.origins.slice(0,1))){const k=o.sourceId+'|'+o.sheet;if(!use.has(k))use.set(k,new Set());use.get(k).add(o.row);}
+ const use=new Map();for(const r of selected)for(const o of (r.rowDeliverable?[r]:r.conflict?r.origins:r.origins.slice(0,1))){const k=o.sourceId+'|'+o.sheet;if(!use.has(k))use.set(k,new Set());use.get(k).add(o.row);}
  const styles=styleMerger(),parts={},sheets=[],theme=records.find(r=>r.theme)?.theme;let n=0;
  for(const record of records){if(!record.sheets.some(s=>use.has(record.source.itemId+'|'+s.name)))continue;const mapping=styles.add(record.styles);
   for(const sheet of record.sheets){const wanted=use.get(record.source.itemId+'|'+sheet.name);if(!wanted)continue;n++;const dataRows=new Set(record.entries.filter(r=>r.sheet===sheet.name).map(r=>r.row));

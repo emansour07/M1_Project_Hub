@@ -142,14 +142,14 @@ def merge_sources(records):
     for record in records:
         for row in record['entries']:groups[row['scopeId']+'|'+row['name'].upper()].append(row)
     entries=[]
-    for variants in groups.values():
-        row=deepcopy(variants[0]);row['origins']=[{k:v.get(k) for k in ['id','sourceId','sourceName','sourceVersion','sourceUrl','sheet','row']} for v in variants]
+    for key,variants in groups.items():
+        origins=[{k:v.get(k) for k in ['id','sourceId','sourceName','sourceVersion','sourceUrl','sheet','row']} for v in variants]
         fields=['description','category','discipline','originator','plannedDate','forecastDate','approvalStatus','projectStage','latestIssueDate','revision','formats','exchanges']
-        row['conflictFields']=[f for f in fields if len({json.dumps(v.get(f),sort_keys=True) for v in variants})>1]
-        for f in row['conflictFields']:
-            if f in ['plannedDate','forecastDate','latestIssueDate','revision']:row[f]=None
-            if f in ['approvalStatus','projectStage']:row[f]=''
-        row.update(conflict=bool(row['conflictFields']),duplicateCount=len(variants)-1);entries.append(row)
+        conflicts=[f for f in fields if len({json.dumps(v.get(f),sort_keys=True) for v in variants})>1]
+        for variant in variants:
+            row=deepcopy(variant)
+            row.update(rowDeliverable=True,origins=origins,duplicateKey=key,conflictFields=conflicts,conflict=bool(conflicts),duplicateCount=len(variants)-1)
+            entries.append(row)
     return entries
 
 def sync_tidps(client,scope,persist=True):
@@ -158,7 +158,7 @@ def sync_tidps(client,scope,persist=True):
     previous=Snapshot.objects.filter(key='midp').first() if persist else None
     previous=previous.data if previous else {}
     cached={}
-    if previous.get('scopeFingerprint')==fingerprint and previous.get('parserVersion')==2:
+    if previous.get('scopeFingerprint')==fingerprint and previous.get('parserVersion') in (2,3):
         for record in Snapshot.objects.filter(key__startswith='tidp:'+previous['generation']+':'):
             cached[record.data['source']['itemId']]=record.data
     for item in sources:
@@ -169,7 +169,7 @@ def sync_tidps(client,scope,persist=True):
     if len(check)!=len(records) or any(r['source']['itemId'] not in check or check[r['source']['itemId']] and check[r['source']['itemId']]!=r['source']['versionId'] for r in records):raise ValueError('TIDPs changed during refresh; the previous MIDP is retained.')
     entries=merge_sources(records);checked=int(time.time()*1000)
     found={r['scopeId'] for r in records if r['scopeId']}
-    result={'source':{'kind':'tidp-merge','name':'MIDP from current TIDPs','version':generation,'checkedAt':checked,'sources':[r['source'] for r in records if r['entries']]},'generation':generation,'scopeFingerprint':fingerprint,'entries':entries,'total':len(entries),'dated':sum(bool(r['plannedDate']) for r in entries),'duplicates':sum(r['duplicateCount'] for r in entries),'conflicts':sum(r['conflict'] for r in entries),'missingSources':[{'id':s['id'],'name':s['name'],'code':s['code']} for s in scope if s['id'] not in found],'parserVersion':2}
+    result={'source':{'kind':'tidp-merge','name':'MIDP from current TIDPs','version':generation,'checkedAt':checked,'sources':[r['source'] for r in records if r['entries']]},'generation':generation,'scopeFingerprint':fingerprint,'entries':entries,'total':len(entries),'dated':sum(bool(r['plannedDate']) for r in entries),'duplicates':len(entries)-len({r['duplicateKey'] for r in entries}),'duplicateGroups':len({r['duplicateKey'] for r in entries if r['duplicateCount']}),'affectedDocuments':sum(bool(r['duplicateCount']) for r in entries),'conflicts':len({r['duplicateKey'] for r in entries if r['conflict']}),'countBasis':'tidp-row','missingSources':[{'id':s['id'],'name':s['name'],'code':s['code']} for s in scope if s['id'] not in found],'parserVersion':3}
     if persist:
         with transaction.atomic():
             for i,record in enumerate(records):Snapshot.objects.update_or_create(key='tidp:'+generation+':'+str(i),defaults={'data':record})
@@ -185,7 +185,7 @@ def export_merged(snapshot,filters):
     if not selected:raise ValueError('No deliverables match this export.')
     wanted=defaultdict(set)
     for r in selected:
-        for o in r['origins'] if r['conflict'] else r['origins'][:1]:wanted[(o['sourceId'],o['sheet'])].add(o['row'])
+        for o in ([r] if r.get('rowDeliverable') else r['origins'] if r['conflict'] else r['origins'][:1]):wanted[(o['sourceId'],o['sheet'])].add(o['row'])
     output=Workbook();output.remove(output.active);audit=[]
     for i in range(snapshot['recordCount']):
         record=Snapshot.objects.get(key='tidp:'+snapshot['generation']+':'+str(i)).data;src=record['source']

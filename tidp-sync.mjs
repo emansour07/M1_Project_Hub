@@ -4,7 +4,7 @@ import {getScope,inOwnerScope} from './scope.mjs';
 import {TIDP_FOLDER,sourceScope,extractTidp,mergeTidps,exportTidps} from './tidp-merge.mjs';
 import {filterDeliverables} from './delivery-core.mjs';
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate';
-const PREFIX='m1/tidps/',VERSION=2;
+const PREFIX='m1/tidps/',VERSION=3;
 const read=async(env,key)=>await(await env.BUCKET.get(PREFIX+key))?.json()||null;
 const put=(env,key,value)=>env.BUCKET.put(PREFIX+key,JSON.stringify(value));
 const pack=value=>{const b=zipSync({record:strToU8(JSON.stringify(value))},{level:1});let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return {compressed:btoa(s)};};
@@ -17,13 +17,13 @@ export async function listTidps(env,policy){
 export async function tidpStatus(env){const s=await read(env,'state');return s?{active:!!s.active,done:s.index||0,total:s.list?.length||0,failed:!!s.failed,checkedAt:s.checkedAt||null}:null;}
 export async function tidpSnapshot(env){const meta=await read(env,'latest');if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await read(env,meta.generation+'/entries/'+i);if(!chunk)throw Error('Merged TIDP register is incomplete.');entries.push(...chunk);}const {recordSources,...publicMeta}=meta,kept=entries.filter(inOwnerScope);return {...publicMeta,entries:kept,total:kept.length,dated:kept.filter(r=>r.plannedDate).length,missingSources:(meta.missingSources||[]).filter(inOwnerScope),checking:await tidpStatus(env)};}
 export async function syncTidpBatch(env,force=false,services={}){
- const policy=await getScope(env);if(!policy)throw Error('Scope is not ready.');let state=await read(env,'state');const now=Date.now();if(state?.leaseUntil>now)return {updating:true};if(!state?.active&&!force&&state?.checkedAt>now-900000)return {updating:false};
+ const policy=await getScope(env);if(!policy)throw Error('Scope is not ready.');let state=await read(env,'state');const now=Date.now();if(state?.leaseUntil>now)return {updating:true};if(!state?.active&&!force&&state?.checkedAt>now-900000&&state.scopeVersion===policy.revision&&state.parserVersion===VERSION)return {updating:false};
  if(!state?.active||state.scopeVersion!==policy.revision||state.parserVersion!==VERSION){state={parserVersion:VERSION,active:true,index:0,generation:crypto.randomUUID(),scopeVersion:policy.revision,leaseUntil:now+120000};await put(env,'state',state);try{state.list=await(services.list||listTidps)(env,policy);}catch(e){state.active=false;state.failed=true;state.leaseUntil=0;await put(env,'state',state);throw e;}}
  state.leaseUntil=now+120000;state.failed=false;await put(env,'state',state);
  try{
   const prior=await read(env,'latest'),batchStarted=Date.now();let downloads=0;
   for(let batch=0;batch<100&&state.index<state.list.length;batch++){const item=state.list[state.index],key=state.generation+'/record/'+state.index;
-   const cachedIndex=prior?.scopeVersion===policy.revision&&(prior.parserVersion===VERSION||prior.parserVersion===1&&sourceScope(item.name,policy))?(prior.recordSources||prior.source.sources).findIndex(s=>s.itemId===item.id&&s.versionId===item.versionId):-1;
+   const cachedIndex=prior?.scopeVersion===policy.revision&&(prior.parserVersion===VERSION||prior.parserVersion===2||prior.parserVersion===1&&sourceScope(item.name,policy))?(prior.recordSources||prior.source.sources).findIndex(s=>s.itemId===item.id&&s.versionId===item.versionId):-1;
    if(cachedIndex>=0){const cached=await read(env,prior.generation+'/record/'+cachedIndex);if(!cached)throw Error('TIDP cache is incomplete.');await put(env,key,cached);state.index++;}
    else{if(downloads>=(services.batchSize||3))break;const data=await(services.download||downloadItemWorkbook)(env,item.id);const record=extractTidp(data.bytes,data.source,policy);await put(env,key,pack(record));state.index++;downloads++;}
    await put(env,'state',state);if(Date.now()-batchStarted>5000)break;
@@ -35,7 +35,7 @@ export async function syncTidpBatch(env,force=false,services={}){
    const merged=mergeTidps(records);if(!merged.total)throw Error('No scoped TIDP deliverables were found.');const checkedAt=Date.now(),source={kind:'tidp-merge',name:'MIDP from current TIDPs',version:state.generation,checkedAt,updatedAt:records.map(r=>r.source.updatedAt||'').sort().at(-1),sources:records.filter(r=>r.entries.length).map(r=>r.source)},chunks=Math.ceil(merged.total/500);
    for(let i=0;i<chunks;i++)await put(env,state.generation+'/entries/'+i,merged.entries.slice(i*500,(i+1)*500));
    const found=new Set(records.map(r=>r.scopeId||sourceScope(r.source.name,policy)?.id)),missingSources=policy.rows.filter(r=>!found.has(r.id)).map(r=>({id:r.id,name:r.name,code:r.code}));
-   const meta={source,recordSources:records.map(r=>r.source),generation:state.generation,scopeVersion:policy.revision,chunks,recordCount:records.length,total:merged.total,dated:merged.entries.filter(r=>r.plannedDate).length,duplicates:merged.duplicates,conflicts:merged.conflicts,missingSources,parserVersion:VERSION};
+   const meta={source,recordSources:records.map(r=>r.source),generation:state.generation,scopeVersion:policy.revision,chunks,recordCount:records.length,total:merged.total,dated:merged.entries.filter(r=>r.plannedDate).length,duplicates:merged.duplicates,conflicts:merged.conflicts,duplicateGroups:merged.duplicateGroups,affectedDocuments:merged.affectedDocuments,countBasis:merged.countBasis,missingSources,parserVersion:VERSION};
    await put(env,'latest',meta);await env.BUCKET.put('m1/workbooks/midp',JSON.stringify({source,rows:merged.entries.filter(r=>r.category==='Models'&&!/YYY.*BIM/i.test(r.sheet))}));
    state.active=false;state.checkedAt=checkedAt;
    if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/tidps/%' AND key NOT IN ('m1/tidps/latest','m1/tidps/state') AND key NOT LIKE ? AND key NOT LIKE ?",PREFIX+state.generation+'/%',PREFIX+(prior?.generation||state.generation)+'/%');
