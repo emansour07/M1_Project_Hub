@@ -228,14 +228,13 @@ def refresh(req,kind='project'):
 def midp_export(req):
     if limited(req,'export',30):return JsonResponse({'error':'Please try again later.'},status=429)
     from .workbooks import SOURCES,midp_entries
-    from .exports import export_midp
+    from .tidps import export_merged
     try:
-        policy=Snapshot.objects.get(key='knowledge').data['scope']['rows']
-        data,tip=APS().download(SOURCES['midp'])
-        rows=midp_entries(data,policy)
-        value=export_midp(data,rows,req.GET.get('start'),req.GET.get('end'),req.GET)
+        snapshot=Snapshot.objects.get(key='midp').data
+        if snapshot.get('source',{}).get('kind')!='tidp-merge':raise ValueError('Refresh the TIDPs before exporting the merged MIDP.')
+        value=export_merged(snapshot,req.GET)
         response=HttpResponse(value,content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition']='attachment; filename="M1_MIDP_'+req.GET['start']+'_'+req.GET['end']+'.xlsx"'
+        response['Content-Disposition']='attachment; filename="M1_MIDP_'+req.GET.get('start','All')+'_'+req.GET.get('end','Dates')+'.xlsx"'
         return response
     except ValueError as exc:return JsonResponse({'error':str(exc)},status=400)
     except Exception:return JsonResponse({'error':'The MIDP export is unavailable. Please try again after refresh.'},status=503)

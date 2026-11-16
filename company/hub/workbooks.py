@@ -115,13 +115,14 @@ def named_column(rows,pattern):
     matches = {i for r in rows for i,v in enumerate(r) if re.fullmatch(pattern,' '.join(text(v).split()),re.I)}
     return next(iter(matches)) if len(matches)==1 else None
 
-def midp_entries(data,scope):
+def midp_entries(data,scope,context=None):
     wb = book(data)
     entries=[]
     for sheet in wb:
         if sheet.title=='Index': continue
+        if sheet.max_row is None or sheet.max_column is None:sheet.calculate_dimension(force=True)
         if sheet.max_row>10000: raise ValueError('MIDP worksheet exceeds 10,000 rows.')
-        rows = list(sheet.values)
+        rows = list(sheet.iter_rows(max_col=min(sheet.max_column,256),values_only=True))
         h = next((i for i,r in enumerate(rows) if any(upper(v)=='ISSUE DATE' for v in r)),None)
         if h is None: continue
         top=rows[:h+2]
@@ -149,7 +150,7 @@ def midp_entries(data,scope):
                 'approvalStatus':text(r[approval]) if approval is not None else '', 'approvalColumnFound':approval is not None,
                 'projectStage':text(r[stage]) if stage is not None else '',
                 'latestIssueDate':latest.get('date'),'latestExchange':latest.get('exchange'),'revision':latest.get('revision'),'exchanges':exchanges,
-                'folderPath':[sheet.title,discipline]}
+                'folderPath':[*list(context or []),sheet.title,discipline]}
             code=parts[6].upper() if len(parts)>6 else ''
             item['category']={'BNM':'Models','BGM':'Models','BFM':'Models','MOD':'Models','C3D':'Models','DWG':'Drawings','SDW':'Drawings','RPT':'Reports','REP':'Reports','RPR':'Reports','CAL':'Calculations','SPE':'Specifications','SPC':'Specifications','SCH':'Schedules'}.get(code,category)
             keep=scoped(item,scope)
@@ -238,9 +239,8 @@ def sync_workbooks(client=None, persist=True):
     scoped_mapping=[{'section':s['section'] or s['zone'],'existing':s['code'],'proposed':s['proposed'] or s['code'],'name':s['name'],
         'scopeId':s['id'],'mappingPending':not s['proposed'],'ambiguous':s['ambiguous']} for s in scope]
     knowledge={'scope':policy,'mapping':{'source':mapping_source,'rows':scoped_mapping,'naming':rules}}
-    data,tip=client.download(SOURCES['midp']);entries=midp_entries(data,scope)
-    if not entries: raise ValueError('No scoped MIDP entries were found. Previous data is retained.')
-    midp={'source':source(tip,SOURCES['midp']),'entries':entries,'total':len(entries),'dated':sum(bool(e['plannedDate']) for e in entries),'parserVersion':4}
+    from .tidps import sync_tidps
+    midp=sync_tidps(client,scope,persist=persist);entries=midp['entries']
     data,tip=client.download(SOURCES['tracker']);tracker=tracker_data(data,scope,entries,source(tip,SOURCES['tracker']))
     from django.db import transaction
     if persist:

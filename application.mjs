@@ -64,7 +64,7 @@ export class M1Application {
 
  constructor(storage,env,templates){this.templates=templates;this.storage=storage;this.env={...env,BUCKET:new SQLiteStore(storage),SQL:storage.sql};this.auth=new OwnerCodeAuth(storage.sql,env.M1_ADMIN_KEY);this.app=createHandler(templates.adminHtml,{schema:1,name:'Awaiting M1 reviews',reportAt:946684800000,reviews:[],voidCount:0,warnings:[]});}
 
- async fetch(request){let response;try{response=await this.handle(request);}catch{response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/received','/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness','/api/orgchart/image','/api/companies','/api/masterplans'].includes(url.pathname))||(request.method==='POST'&&['/api/received/refresh','/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}return secure(response);}
+ async fetch(request){let response;try{response=await this.handle(request);}catch(e){if(new URL(request.url).pathname.startsWith('/api/midp'))console.error('MIDP update failed:',e.name,e.message);response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/received','/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness','/api/orgchart/image','/api/companies','/api/masterplans'].includes(url.pathname))||(request.method==='POST'&&['/api/received/refresh','/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}response.headers.set('X-M1-Release','2026-11-16-tidps');return secure(response);}
 
  async handle(request){const {trackerEditorHtml,contentEditorHtml,remindersHtml}=this.templates;const env=this.env,url=new URL(request.url),path=url.pathname;
 
@@ -215,7 +215,7 @@ export class M1Application {
 
   if(path==='/api/midp/export'&&request.method==='GET'){
 
-   try{const out=await exportMidp(env,url.searchParams.get('start'),url.searchParams.get('end'),Object.fromEntries(['category','asset','discipline','originator','format','approval','q'].map(k=>[k,url.searchParams.get(k)||''])));return new Response(out.bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="M1_MIDP_'+url.searchParams.get('start')+'_'+url.searchParams.get('end')+'.xlsx"'}});}catch(e){return json({error:e.message},400);}
+   try{const out=await exportMidp(env,url.searchParams.get('start'),url.searchParams.get('end'),Object.fromEntries(['category','asset','discipline','originator','format','approval','q'].map(k=>[k,url.searchParams.get(k)||''])));return new Response(out.bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="M1_MIDP_'+(url.searchParams.get('start')||'All')+'_'+(url.searchParams.get('end')||'Dates')+'.xlsx"'}});}catch(e){return json({error:e.message},400);}
 
   }
 
@@ -223,7 +223,7 @@ export class M1Application {
 
    if(request.method!=='POST'||![url.origin,env.FRONTEND_ORIGIN].includes(request.headers.get('Origin')))return json({error:'Request not accepted.'},403);
 
-   const last=await(await env.BUCKET.get('m1/midp/refresh-lock'))?.json();if(last?.until>Date.now())return json({updating:true});await env.BUCKET.put('m1/midp/refresh-lock',JSON.stringify({until:Date.now()+60000}));await syncWorkbook(env,'midp');return json({ok:true});
+   const last=await(await env.BUCKET.get('m1/midp/refresh-lock'))?.json();if(last?.until>Date.now())return json({updating:true});await env.BUCKET.put('m1/midp/refresh-lock',JSON.stringify({until:Date.now()+15000}));const result=await syncWorkbook(env,'midp');return json({ok:true,updating:result.updating});
 
   }
 

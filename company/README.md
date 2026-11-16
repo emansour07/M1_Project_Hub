@@ -119,3 +119,8 @@ The approved working week is Saturday through Thursday. Friday alone is excluded
 Date filters have inclusive From/To dates and a selectable date field. Missing dates remain visible without a range and are excluded while a range is selected; reversed ranges are rejected. Exports retain the underlying dates, not just durations. Date-range reports filter the current records; they are not reconstructed historical status snapshots.
 
 M1 adds review submission/due/completion ranges, any tracker date field, analysis target dates, original-model update dates, Shared-checker file update dates and Requirements needed-by/last-update dates. The MIDP continues to use its approved Planned date range and preserves the original Excel formatting. Original Design now includes an asset-by-discipline matrix, with received/expected counts, missing-model/format drill-down and CSV exports. Matched files link to ACC items; missing files link to the related observed folder or the reference root, never an invented file location. The 54 unassigned expectations stay outside asset totals.
+
+
+### Direct TIDP MIDP source
+
+The scheduled workbook job assembles the MIDP from the current scoped Excel TIDPs in the main ACC folder, preserving the separate original-design MIDP baseline. It publishes a complete source set, including provenance and duplicate warnings. The MIDP Excel endpoint exports all filtered rows or an inclusive Planned-date range from that snapshot. Source workbooks remain read-only. Run the existing scheduled jobs after deployment; no new credential scope is required.

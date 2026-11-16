@@ -1,3 +1,4 @@
+import {syncTidpBatch} from '../tidp-sync.mjs';
 import receivedImportHtml from '../company/hub/templates/hub/received_import.html';
 import {DurableObject} from 'cloudflare:workers';
 import {M1Application} from '../application.mjs';
@@ -15,7 +16,8 @@ export class M1State extends DurableObject {
  constructor(ctx,env){super(ctx,env);this.storage=ctx.storage;this.application=new M1Application(ctx.storage,env,templates);}
  fetch(request){return this.application.fetch(request);}
  async tick(){await ensureModelAlarm(this.storage,this.application.env.FORMA_SYNC_ENABLED==='true');return this.application.tick();}
+ async midpTick(){if(this.application.env.FORMA_SYNC_ENABLED==='true')return syncTidpBatch(this.application.env);}
  alarm(){const env=this.application.env;return runModelAlarm(this.storage,env.FORMA_SYNC_ENABLED==='true',()=>syncModelSources(env,false,36),()=>nextModelSyncAt(env));}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
-export default {fetch:(request,env)=>state(env).fetch(request),scheduled:(event,env,ctx)=>ctx.waitUntil(state(env).tick())};
+export default {fetch:(request,env)=>state(env).fetch(request),scheduled:(event,env,ctx)=>ctx.waitUntil(Promise.allSettled([state(env).tick(),state(env).midpTick()]))};

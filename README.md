@@ -80,3 +80,12 @@ The approved working week is Saturday through Thursday. Friday alone is excluded
 Date filters have inclusive From/To dates and a selectable date field. Missing dates remain visible without a range and are excluded while a range is selected; reversed ranges are rejected. Exports retain the underlying dates, not just durations. Date-range reports filter the current records; they are not reconstructed historical status snapshots.
 
 M1 adds review submission/due/completion ranges, any tracker date field, analysis target dates, original-model update dates, Shared-checker file update dates and Requirements needed-by/last-update dates. The MIDP continues to use its approved Planned date range and preserves the original Excel formatting. Original Design now includes an asset-by-discipline matrix, with received/expected counts, missing-model/format drill-down and CSV exports. Matched files link to ACC items; missing files link to the related observed folder or the reference root, never an invented file location. The 54 unassigned expectations stay outside asset totals.
+
+
+## MIDP assembled from current TIDPs
+
+The MIDP register now reads the latest versions of scoped `_TIDP_*.xlsx` items directly from the main ACC `2.1_TIDP` folder. Temporary subfolders and unscoped files are excluded. The four original MIDPs used for original-model analysis are a separate baseline. No source Excel is edited.
+
+Cloudflare checks the source list every 15 minutes after a completed merge and processes changed workbooks in bounded batches. The last complete merge remains visible until all sources pass parsing and version verification. Unchanged versions are reused. The initial merge takes several batches; Refresh advances it. Individual rows link to their source TIDP. Missing scope sources and conflicting duplicate filenames are reported; conflicting approval/date values are left blank, never guessed.
+
+Export the full filtered MIDP with no dates selected, or an inclusive Planned-date range with both dates selected. Forecast, approval and exchange-date fields are retained. The Excel workbook preserves the source delivery tables in separate asset/discipline tabs and adds a TIDP sources sheet. It is a static export of the last complete dashboard merge, not a write-back to ACC. Unsupported date systems, changed layouts and read failures retain the previous complete register.

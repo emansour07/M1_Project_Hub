@@ -37,7 +37,7 @@ test('automatic wakes continue without viewers and honour provider retry times',
 test('a failing workbook cannot starve other stale Excel sources',async()=>{
  const env={BUCKET:bucket()},calls=[],read=async()=>null,sync=async(_env,key)=>{calls.push(key);if(key==='scope')throw Error('Source unavailable');return {};};
  await assert.rejects(()=>syncNextWorkbook(env,read,sync));
- for(let i=0;i<3;i++)await syncNextWorkbook(env,read,sync);
- assert.deepEqual(calls,['scope','tidp','tracker','midp']);
+ for(let i=0;i<2;i++)await syncNextWorkbook(env,read,sync);
+ assert.deepEqual(calls,['scope','tidp','tracker']);
  assert.deepEqual(await syncNextWorkbook(env,async()=>({source:{checkedAt:Date.now()}}),()=>assert.fail()),{skipped:true});
 });

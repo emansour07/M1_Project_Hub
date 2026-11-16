@@ -1,3 +1,5 @@
+import {compactTidp} from './tidp-merge.mjs';
+import {tidpSnapshot,tidpStatus,syncTidpBatch,exportMergedTidps} from './tidp-sync.mjs';
 import {leadColumns} from './tracker-fields.mjs';
 import {filterDeliverables} from './delivery-core.mjs';
 import {read,utils} from 'xlsx';
@@ -74,15 +76,12 @@ async function saveLedger(env,source,entries){
  for(let i=0;i<count;i++)await env.BUCKET.put('m1/midp/'+generation+'/'+i,JSON.stringify(entries.slice(i*500,(i+1)*500)));
  const meta={source,generation,chunks:count,total:entries.length,dated:entries.filter(r=>r.plannedDate).length,scopeVersion:scope.revision,parserVersion:4};await env.BUCKET.put('m1/midp/latest',JSON.stringify(meta));if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/midp/%' AND key<>? AND key<>'m1/midp/refresh-lock' AND key NOT LIKE ?",'m1/midp/latest','m1/midp/'+generation+'/%');return meta;
 }
-export async function midpSnapshot(env){const meta=await (await env.BUCKET.get('m1/midp/latest'))?.json();if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await env.BUCKET.get('m1/midp/'+meta.generation+'/'+i);if(!chunk)throw Error('MIDP cache is incomplete.');entries.push(...await chunk.json());}const scope=await getScope(env),kept=entries.map(r=>scopedFile(r,scope)).filter(Boolean);return {source:meta.source,parserVersion:meta.parserVersion,total:kept.length,dated:kept.filter(r=>r.plannedDate).length,entries:kept};}
-export async function exportMidp(env,start,end,filters={}){
- dateRange(start,end);const data=await downloadWorkbook(env,'midp');let saved=await midpSnapshot(env);
- if(!saved||saved.parserVersion!==4||saved.source.version!==data.source.version){const parsed=extractMidp(data.bytes);await saveLedger(env,data.source,parsed.deliverables);saved=await midpSnapshot(env);}
- const result=filterMidpWorkbook(data.bytes,filterDeliverables(saved.entries,filters),start,end);return {...result,source:data.source};
-}
+export async function midpSnapshot(env){const merged=await tidpSnapshot(env);if(merged)return merged;const meta=await (await env.BUCKET.get('m1/midp/latest'))?.json();if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await env.BUCKET.get('m1/midp/'+meta.generation+'/'+i);if(!chunk)throw Error('MIDP cache is incomplete.');entries.push(...await chunk.json());}const scope=await getScope(env),kept=entries.map(r=>scopedFile(r,scope)).filter(Boolean);return {checking:await tidpStatus(env),source:meta.source,parserVersion:meta.parserVersion,total:kept.length,dated:kept.filter(r=>r.plannedDate).length,entries:kept};}
+export async function exportMidp(env,start,end,filters={}){return exportMergedTidps(env,start,end,filters);}
 export async function syncWorkbook(env,key){
  if(!['tidp','tracker','midp','scope'].includes(key))throw Error('Unknown workbook.');
- const data=await downloadWorkbook(env,key),title=key==='tidp'?'Asset Tagging Naming':'Tracker';
+ if(key==='midp'){const status=await syncTidpBatch(env,true);return {...(await workbookSnapshot(env,'midp')||{source:{checkedAt:0},rows:[]}),...status};}
+ const data=await downloadWorkbook(env,key);if(key==='tidp')data.bytes=compactTidp(data.bytes);const title=key==='tidp'?'Asset Tagging Naming':'Tracker';
  if(key==='scope'){
   const book=read(data.bytes,{type:'array',sheets:['Scope mapping'],cellStyles:false,cellFormula:false,sheetRows:1000}),sheet=book.Sheets['Scope mapping'];if(!sheet)throw Error('Scope mapping tab is missing.');
   const rows=parseScope(utils.sheet_to_json(sheet,{header:1,defval:null})),result={source:data.source,rows};await env.BUCKET.put('m1/workbooks/scope',JSON.stringify(result));return result;
