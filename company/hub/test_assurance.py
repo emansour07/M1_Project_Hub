@@ -35,9 +35,19 @@ class AssuranceTests(TestCase):
         self.report['kind']='qaqc'
         with self.assertRaises(ValueError):validate(self.report,self.scope)
     def test_issue_sync_is_read_only_scoped_and_failure_retains_snapshot(self):
-        client=Mock();client.call.return_value={'results':[{'id':'issue-one','title':'A33 issue','locationDetails':'Island A33','status':'open'},{'id':'issue-two','title':'Unknown','status':'open'}],'pagination':{'totalResults':2}}
+        client=Mock();client.call.return_value={'results':[{'id':'issue-one','title':'A33 issue','locationDetails':'Island A33','status':'open'},{'id':'issue-two','title':'Unknown','status':'open','linkedDocuments':[{'urn':'unresolved'}]}],'pagination':{'totalResults':2}}
         sync_issues(client);self.assertEqual(len(read('issues')['rows']),1);self.assertEqual(read('issues')['unassigned'],1)
         client.call.assert_called_once();self.assertNotIn('POST',str(client.call.call_args))
         Snapshot.objects.filter(key='assurance/issue-state').update(data={});client.call.return_value={'results':[],'pagination':{'totalResults':2}}
         with self.assertRaises(ValueError):sync_issues(client)
         self.assertEqual(len(read('issues')['rows']),1)
+    def test_placement_and_project_coordination_scope(self):
+        from .assurance import issue_placements,issue_scope,placement_discipline
+        client=Mock();client.call.side_effect=[{'data':{'attributes':{'displayName':'M1-FXX-SAP-XXX-05-BM003.rvt'},'relationships':{'parent':{'data':{'id':'asset'}}}}},{'data':{'attributes':{'name':'Island A33'},'relationships':{'parent':{'data':{'id':'discipline'}}}}},{'data':{'attributes':{'name':'Mechanical'}}}]
+        raw={'id':'one','title':'Coordination','linkedDocuments':[{'urn':'urn:adsk.wipemea:dm.lineage:example'}]}
+        docs=issue_placements(raw,client,{})
+        self.assertEqual(issue_scope(raw,self.scope,docs)['id'],'Island-A33')
+        self.assertEqual(placement_discipline(docs),'Mechanical')
+        federation=[{'name':'M1-FXX-SAP-XXX-05-BM100-BFM-XX-000001.nwd','folderPath':['3.5 Federated Models']}]
+        self.assertEqual(issue_scope(raw,self.scope,federation)['id'],'project-coordination')
+        self.assertIsNone(issue_scope(raw,self.scope,[{'name':'M1-FXX-SAP-A51-05-BM003.rvt','folderPath':[]}]))

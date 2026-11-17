@@ -3,6 +3,8 @@ import io
 import json
 import time
 import zipfile
+import re
+from urllib.parse import quote
 from datetime import date, datetime
 from django.conf import settings
 from django.db import transaction
@@ -88,7 +90,57 @@ def snapshot(owner=False):
     for r in reports:
         if r['kind']=='qaqc':r['rows']=[{**x,'assessmentState':assessment_state(x,scan.data if scan else None)} for x in r['rows']]
     issues=read('issues',{'rows':[],'checkedAt':None,'pending':[],'unassigned':0});state=read('issue-state',{})
-    return {'reports':reports,'issues':{**issues,'rows':[r for r in issues['rows'] if r['scopeId'] in allowed],'pending':issues.get('pending',[]) if owner else None},'issueState':{'checkedAt':state.get('checkedAt'),'error':state.get('error') if owner else 'The latest issue update is unavailable. The last complete check is retained.' if state.get('error') else None},'links':read('links',[]),'assets':scope if owner else None}
+    return {'reports':reports,'issues':{**issues,'rows':[r for r in issues['rows'] if r['scopeId'] in allowed or r['scopeId']=='project-coordination'],'pending':issues.get('pending',[]) if owner else None},'issueState':{'checkedAt':state.get('checkedAt'),'error':state.get('error') if owner else 'The latest issue update is unavailable. The last complete check is retained.' if state.get('error') else None},'links':read('links',[]),'assets':scope if owner else None}
+def issue_placements(raw,client,cache):
+    def get(path):
+        if path not in cache:
+            try:cache[path]=client.call(path)
+            except ProviderError as exc:
+                if '(403)' not in str(exc) and '(404)' not in str(exc):raise
+                cache[path]={'data':None}
+        return cache[path]
+    documents=[]
+    for link in (raw.get('linkedDocuments') or [])[:8]:
+        urn=re.sub(r'@\d+$','',str(link.get('urn') or ''))
+        if not re.fullmatch(r'urn:adsk\.wip(?:emea|prod):dm\.lineage:[\w-]+',urn):continue
+        base=f'/data/v1/projects/b.{settings.M1_PROJECT_ID.removeprefix("b.")}/'
+        item=get(base+'items/'+quote(urn,safe='')).get('data')
+        if not item:continue
+        name=item.get('attributes',{}).get('displayName') or item.get('attributes',{}).get('name')
+        if not name:continue
+        folders=[];seen=set();parent=item.get('relationships',{}).get('parent',{}).get('data',{}).get('id')
+        for _ in range(10):
+            if not parent:break
+            if parent in seen:raise ValueError('Repeated ACC placement folder.')
+            seen.add(parent);folder=get(base+'folders/'+quote(parent,safe='')).get('data')
+            if not folder:break
+            label=folder.get('attributes',{}).get('displayName') or folder.get('attributes',{}).get('name')
+            if label:folders.insert(0,label)
+            parent=folder.get('relationships',{}).get('parent',{}).get('data',{}).get('id')
+        documents.append({'id':urn,'name':name,'folderPath':folders})
+    return documents
+
+def issue_scope(raw,scope,documents):
+    if documents and all(d['name'].lower().endswith('.nwd') and (re.search(r'-BFM-|fed(?:e)?rat(?:ed|ion)',d['name'],re.I) or any(re.search('federated models',p,re.I) for p in d['folderPath'])) for d in documents):
+        return {'id':'project-coordination','code':'Project coordination — asset not assigned','name':'Project coordination — asset not assigned'}
+    if documents:
+        matches=[scoped(d,scope) for d in documents]
+        ids={m['scopeId'] for m in matches if m}
+        return next((a for a in scope if a['id'] in ids),None) if all(matches) and len(ids)==1 else None
+    mapped=scoped({'name':raw.get('title',''),'description':raw.get('description',''),'folderPath':[raw.get('title') or '',raw.get('locationDetails') or '']},scope)
+    found=next((a for a in scope if mapped and a['id']==mapped['scopeId']),None)
+    if not found and not raw.get('linkedDocuments') and not re.search(r'\bA51\b',' '.join([raw.get('title') or '',raw.get('locationDetails') or '']),re.I):
+        return {'id':'project-coordination','code':'Project coordination — asset not assigned','name':'Project coordination — asset not assigned'}
+    return found
+
+def placement_discipline(documents):
+    names=set()
+    for doc in documents:
+        for folder in doc['folderPath']:
+            label=re.sub(r'^\d+[._ -]*','',folder).strip().lower()
+            if re.fullmatch(r'architecture|architectural|structure|structural|mechanical|electrical|civil|plumbing|fire ?fighting|landscape',label):names.add(label.replace('architectural','architecture').replace('structural','structure').capitalize())
+    return next(iter(names)) if len(names)==1 else ''
+
 def sync_issues(client=None):
     state=read('issue-state',{});at=now()
     if state.get('nextAttemptAt',0)>at:return {'cached':True}
@@ -96,7 +148,7 @@ def sync_issues(client=None):
     try:
         scope=assets()
         if not scope:raise ValueError('Load M1 asset scope before linking issues.')
-        client=client or APS();assignments=read('assignments',{});job=read('issue-job')
+        client=client or APS();placement_cache={};assignments=read('assignments',{});job=read('issue-job')
         if not job or job['startedAt']<at-1800000:job={'startedAt':at,'offset':0,'rows':[],'pending':[],'seen':[],'total':None,'unassigned':0}
         for _ in range(5):
             d=client.call(f'/construction/issues/v1/projects/{settings.M1_PROJECT_ID}/issues?limit=100&offset={job["offset"]}')
@@ -109,15 +161,14 @@ def sync_issues(client=None):
                 if not ident or ident in job['seen']:raise ValueError('Repeated issue page.')
                 job['seen'].append(ident);assignment=assignments.get(ident,{})
                 if assignment.get('scopeId')=='exclude':continue
-                found=next((a for a in scope if a['id']==assignment.get('scopeId')),None)
-                if not found:
-                    mapped=scoped({'name':raw.get('title',''),'description':raw.get('description',''),'folderPath':[raw.get('title') or '',raw.get('locationDetails') or '']},scope)
-                    found=next((a for a in scope if mapped and a['id']==mapped['scopeId']),None)
+                documents=issue_placements(raw,client,placement_cache)
+                found=next((a for a in scope if a['id']==assignment.get('scopeId')),None) if assignment.get('scopeId') else issue_scope(raw,scope,documents)
                 if not found:
                     job['unassigned']+=1
-                    if len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200]})
+                    if len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200],'model':'; '.join(d['name'] for d in documents)})
                     continue
-                job['rows'].append({'id':ident,'key':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:500],'status':text(raw.get('status')) or 'Unknown','scopeId':found['id'],'asset':found.get('proposed') or found['code'],'assetName':found['name'],'discipline':assignment.get('discipline',''),'owner':text(raw.get('assignedTo')),'ownerType':text(raw.get('assignedToType')),'created':raw.get('createdAt'),'updated':raw.get('updatedAt'),'due':raw.get('dueDate'),'closed':raw.get('closedAt'),'description':text(raw.get('description'))[:3000],'url':f'https://acc.autodesk.eu/build/issues/projects/{settings.M1_PROJECT_ID}?issueId={ident}'})
+                if found['id']=='project-coordination' and len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200],'model':'; '.join(d['name'] for d in documents)})
+                job['rows'].append({'id':ident,'key':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:500],'status':text(raw.get('status')) or 'Unknown','scopeId':found['id'],'asset':found.get('proposed') or found['code'],'assetName':found['name'],'projectLevel':found['id']=='project-coordination','discipline':assignment.get('discipline') or placement_discipline(documents),'model':'; '.join(d['name'] for d in documents),'owner':text(raw.get('assignedTo')),'ownerType':text(raw.get('assignedToType')),'created':raw.get('createdAt'),'updated':raw.get('updatedAt'),'due':raw.get('dueDate'),'closed':raw.get('closedAt'),'description':text(raw.get('description'))[:3000],'url':f'https://acc.autodesk.eu/build/issues/projects/{settings.M1_PROJECT_ID}?issueId={ident}'})
             job['offset']+=len(result)
             if job['offset']>total or not result and job['offset']<total:raise ValueError('Incomplete issue page.')
             if job['offset']==total:
