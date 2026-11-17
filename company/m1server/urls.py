@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.urls import path
 from django.shortcuts import redirect
-from hub import views, auth, requirements, companies, received
+from hub import views, auth, requirements, companies, received, assurance
 
 urlpatterns = [
+    path('admin/assurance',assurance.workspace),
+    path('api/assurance',assurance.api),
+    path('api/assurance/<str:action>',assurance.api),
     path('admin/received',received.workspace),
     path('api/received/import',received.import_analysis),
     path('api/received',received.public),

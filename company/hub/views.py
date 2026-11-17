@@ -70,7 +70,7 @@ def dashboard(req):
     if not path.exists(): return HttpResponse('Build the frontend before starting the server.',status=503)
     html = path.read_text(encoding='utf8')
     # Build assets share this origin; API credentials never go to JavaScript.
-    html = re.sub(r'(src|href)="((?:style\.css|config\.js|core\.js|app\.js|assets/)[^"]*)"',r'\1="/static/\2"',html)
+    html = re.sub(r'(src|href)="((?:style\.css|config\.js|core\.js|date-rules\.js|report-dates\.js|app\.js|assets/)[^"]*)"',r'\1="/static/\2"',html)
     html = html.replace('/static/config.js','/runtime-config.js')
     return HttpResponse(html)
 

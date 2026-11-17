@@ -15,7 +15,7 @@ for path in (root/'company').rglob('*'):
     if any(part in ('private','__pycache__','staticfiles','.venv') for part in rel.parts):continue
     if path.suffix in ('.py','.html','.txt','.md') or path.name in ('.env.example','requirements-schema.json','company-defaults.json','midp-layout.json'):files.append((path,rel.as_posix()))
 for path in (root/'pages').rglob('*'):
-    if path.is_file() and path.suffix in ('.html','.js','.mjs','.css','.svg','.ico') and path.name!='M1_Project_Hub_Preview.html':
+    if path.is_file() and path.suffix in ('.html','.js','.mjs','.css','.svg','.ico','.xml') and path.name!='M1_Project_Hub_Preview.html':
         files.append((path,path.relative_to(root).as_posix()))
 chart=root/'company/private/media/orgchart.svg'
 if chart.exists():files.append((chart,'company/private/media/orgchart.svg'))

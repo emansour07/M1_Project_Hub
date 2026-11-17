@@ -1,3 +1,4 @@
+import {assuranceRoute} from './assurance.mjs';
 import {receivedSnapshot,validateReceived} from './received.mjs';
 import {syncNextWorkbook} from './workbook-schedule.mjs';
 import {operationsRoute} from './operations.mjs';
@@ -64,7 +65,7 @@ export class M1Application {
 
  constructor(storage,env,templates){this.templates=templates;this.storage=storage;this.env={...env,BUCKET:new SQLiteStore(storage),SQL:storage.sql};this.auth=new OwnerCodeAuth(storage.sql,env.M1_ADMIN_KEY);this.app=createHandler(templates.adminHtml,{schema:1,name:'Awaiting M1 reviews',reportAt:946684800000,reviews:[],voidCount:0,warnings:[]});}
 
- async fetch(request){let response;try{response=await this.handle(request);}catch(e){if(new URL(request.url).pathname.startsWith('/api/midp'))console.error('MIDP update failed:',e.name,e.message);response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/received','/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness','/api/orgchart/image','/api/companies','/api/masterplans'].includes(url.pathname))||(request.method==='POST'&&['/api/received/refresh','/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}response.headers.set('X-M1-Release','2026-11-16-tidps');return secure(response);}
+ async fetch(request){let response;try{response=await this.handle(request);}catch(e){if(new URL(request.url).pathname.startsWith('/api/midp'))console.error('MIDP update failed:',e.name,e.message);response=json({error:'Unable to update right now. Please try again shortly.'},503);}const origin=request.headers.get('Origin'),url=new URL(request.url);if(origin===this.env.FRONTEND_ORIGIN&&((request.method==='GET'&&['/api/assurance','/api/received','/api/snapshot','/api/models','/api/knowledge','/api/midp','/api/midp/export','/api/tracker','/api/content','/api/originals','/api/checker','/api/completeness','/api/orgchart/image','/api/companies','/api/masterplans'].includes(url.pathname))||(request.method==='POST'&&['/api/assurance/refresh','/api/received/refresh','/api/refresh','/api/models/refresh','/api/midp/refresh','/api/tracker/refresh','/api/originals/refresh'].includes(url.pathname)))){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');}response.headers.set('X-M1-Release','2026-11-17-assurance');return secure(response);}
 
  async handle(request){const {trackerEditorHtml,contentEditorHtml,remindersHtml}=this.templates;const env=this.env,url=new URL(request.url),path=url.pathname;
 
@@ -112,6 +113,8 @@ export class M1Application {
    if(!owner||request.method!=='PUT'||request.headers.get('Origin')!==url.origin)return json({error:'Owner access required.'},403);
    try{const data=validateReceived(await limitedJson(request,1500000),await getScope(env));await env.BUCKET.put('m1/received',JSON.stringify(data));return json({saved:true,count:data.rows.length});}catch(e){return json({error:e.message},400);}
   }
+
+  const assurance=await assuranceRoute(this,request,owner);if(assurance)return assurance;
 
   const operations=await operationsRoute(this,request,owner);if(operations)return operations;
 

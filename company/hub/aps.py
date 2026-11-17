@@ -54,7 +54,7 @@ class APS:
         return self._token
     def call(self, path, method='GET', data=None):
         if not path.startswith('/') or path.startswith('//'): raise ValueError('Invalid Autodesk API path.')
-        headers = {'Authorization':'Bearer '+self.token(), 'Region':settings.M1_REGION,
+        headers = {'Authorization':'Bearer '+self.token(), 'Region':settings.M1_REGION, 'x-ads-region':settings.M1_REGION,
                    'Content-Type':'application/vnd.api+json' if path.startswith('/data/') else 'application/json'}
         return json.loads(request(API+path, method, json.dumps(data).encode() if data is not None else None, headers))
     @property
