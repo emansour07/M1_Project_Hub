@@ -101,6 +101,20 @@ class CompanyAssignmentTests(TestCase):
         self.assertEqual(self.client.put('/api/operations/companies',self.config,content_type='application/json').status_code,400)
         self.assertEqual(Snapshot.objects.get(key='knowledge').data['scope']['rows'][0]['party'],'ARX')
 
+class ArxEgyAssignmentTests(TestCase):
+    def test_update_preserves_scope_and_subsequent_owner_changes(self):
+        from .companies import defaults,settings
+        old=defaults();old.pop('appliedUpdates');old['revision']=4
+        old['companies']=[c for c in old['companies'] if c['id']!='arx-egy']
+        old['assignments']=[a for a in old['assignments'] if a['companyId']!='arx-egy']
+        row=Snapshot.objects.create(key='companies',data=old)
+        updated=settings();assigned=[a for a in updated['assignments'] if a['companyId']=='arx-egy']
+        self.assertEqual(len(assigned),10);self.assertEqual(updated['revision'],5)
+        self.assertEqual(sum(a['reportedStatus']=='Finished' for a in assigned),4)
+        assigned[0]['reportedStatus']='On hold';assigned[0]['companyId']='atm'
+        row.data=updated;row.save()
+        self.assertEqual(settings(),updated)
+
 class OrganisationAnchorTests(TestCase):
     def test_rotated_connector_joins_technical_manager_to_discipline_header(self):
         from .orgchart import connector_points
