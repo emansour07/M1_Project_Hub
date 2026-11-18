@@ -5,3 +5,9 @@ export function filterDeliverables(rows,filters={}){return rows.filter(r=>{
  const d=r.plannedDate;
  return (filters.plannedStatus!=='with'||!!d)&&(filters.plannedStatus!=='without'||!d)&&(!filters.start&&!filters.end||d&&(!filters.start||d>=filters.start)&&(!filters.end||d<=filters.end))&&(!filters.category||deliverableCategory(r)===filters.category)&&(!filters.parcel||deliverableParcel(r)===filters.parcel)&&(!filters.asset||r.scopeId===filters.asset)&&(!filters.discipline||(r.discipline||'Unclassified')===filters.discipline)&&(!filters.originator||r.originator===filters.originator)&&(!filters.actualOriginator||r.actualOriginator===filters.actualOriginator)&&(!filters.format||r.formats?.includes(filters.format))&&(!filters.approval||(filters.approval==='<blank>'?!r.approvalStatus:r.approvalStatus===filters.approval))&&(!filters.q||[r.name,r.description,r.scopeName,r.scopeAsset,r.discipline].join(' ').toLowerCase().includes(filters.q.toLowerCase()));
  });}
+
+// Each list respects every other filter, while retaining alternatives within itself.
+export function deliverableFacets(rows,filters={}){
+ const fields={category:r=>[deliverableCategory(r)],parcel:r=>[deliverableParcel(r)],asset:r=>[r.scopeId],discipline:r=>[r.discipline||'Unclassified'],originator:r=>[r.originator],actualOriginator:r=>[r.actualOriginator],format:r=>r.formats||[],approval:r=>[r.approvalStatus||'<blank>'],plannedStatus:r=>[r.plannedDate?'with':'without']};
+ return Object.fromEntries(Object.entries(fields).map(([key,values])=>[key,[...new Set(filterDeliverables(rows,{...filters,[key]:''}).flatMap(values).filter(Boolean))].sort()]));
+}
