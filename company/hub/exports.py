@@ -10,6 +10,8 @@ def attrs(tag): return {k:html.unescape(v) for k,v in re.findall(r'([\w:]+)="([^
 def filter_rows(entries,filters):
     out=[]
     for r in entries:
+        if filters.get('plannedStatus')=='with' and not r.get('plannedDate'):continue
+        if filters.get('plannedStatus')=='without' and r.get('plannedDate'):continue
         parts=str(r.get('name') or '').split('-')
         parcel=r.get('actualParcel') or (parts[1].strip().upper() if len(parts)>1 else '') or 'Not provided'
         if filters.get('parcel') and parcel!=filters['parcel']:continue

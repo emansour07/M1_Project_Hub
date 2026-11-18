@@ -56,3 +56,5 @@
 .assurance-guide{margin:24px 0}.assurance-guide>summary{cursor:pointer;font-size:18px;font-weight:650}.assurance-guide iframe{display:block;width:100%;height:680px;border:1px solid #ddd;border-radius:8px;background:#f4f4f1}.assurance-guide[hidden]{display:none}@media(max-width:600px){.assurance-guide iframe{height:70vh;min-height:420px}}
 
 #delivery-matrix-table tbody th{min-width:240px;text-align:left;font-weight:500}#delivery-matrix-table tbody th small{display:block;margin-top:4px;line-height:1.4}#delivery-matrix-table .button{min-width:38px;padding:9px 11px}#knowledge-delivery-matrix>.mapping-tools{justify-content:flex-start;gap:12px}
+
+#midp-kpis button[aria-pressed=true]{outline:2px solid #171717;outline-offset:-2px;background:#f0f0ec}#midp-kpis button:focus-visible{outline:3px solid #7854a8;outline-offset:2px}#midp .midp-planned-date{white-space:nowrap;font-weight:600}
