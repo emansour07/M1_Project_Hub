@@ -181,7 +181,8 @@ def sync_tidps(client,scope,persist=True):
 def export_merged(snapshot,filters):
     start,end=filters.get('start'),filters.get('end')
     if (start or end) and (not start or not end or iso(start)!=start or iso(end)!=end or start>end):raise ValueError('Choose a valid planned-date range.')
-    selected=[r for r in filter_rows(snapshot['entries'],filters) if not(start or end) or r.get('plannedDate') and start<=r['plannedDate']<=end]
+    from .midp_metadata import enrich_entries
+    selected=[r for r in filter_rows(enrich_entries(snapshot['entries']),filters) if not(start or end) or r.get('plannedDate') and start<=r['plannedDate']<=end]
     if not selected:raise ValueError('No deliverables match this export.')
     from .midp_export import export_consolidated
     records=[Snapshot.objects.get(key='tidp:'+snapshot['generation']+':'+str(i)).data for i in range(snapshot['recordCount'])]

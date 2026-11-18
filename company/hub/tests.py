@@ -134,3 +134,15 @@ class OrganisationAnchorTests(TestCase):
         anchor=fromstring('<twoCellAnchor xmlns="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><from><col>2</col><colOff>9525</colOff><row>3</row><rowOff>0</rowOff></from><to><col>4</col><colOff>9525</colOff><row>5</row><rowOff>0</rowOff></to></twoCellAnchor>')
         sheet=fromstring('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetFormatPr defaultColWidth="10.7109375" defaultRowHeight="15"/></worksheet>')
         self.assertEqual(anchor_bounds(anchor,sheet),(161,60,160,40))
+
+class MidpMetadataTests(TestCase):
+    def test_resolved_parcels_and_current_delivery_company_preserve_source_rows(self):
+        from .midp_metadata import enrich_entries
+        from .exports import filter_rows
+        Snapshot.objects.create(key='knowledge',data={'scope':{'rows':[{'id':'Island-A55','code':'A55','zone':'Island','party':'ARX'},{'id':'Subsea-SS1','code':'SS1','zone':'Subsea','party':'ATM'}]}})
+        rows=[{'scopeId':'Island-A55','name':'M1-YYY-SAP-IWT','originator':'SAP'},{'scopeId':'Subsea-SS1','name':'M1-YYY-ATM-SS1'}]
+        result=enrich_entries(rows)
+        self.assertEqual(result[0]['actualParcel'],'102');self.assertEqual(result[0]['actualOriginator'],'ARX EGY')
+        self.assertEqual(result[0]['name'],rows[0]['name']);self.assertTrue(result[0]['parcelNeedsCorrection'])
+        self.assertEqual(result[1]['actualParcel'],'Unconfirmed')
+        self.assertEqual(len(filter_rows(result,{'parcel':'102','actualOriginator':'ARX EGY','originator':'SAP'})),1)

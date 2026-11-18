@@ -218,7 +218,7 @@ export class M1Application {
 
   if(path==='/api/midp/export'&&request.method==='GET'){
 
-   try{const out=await exportMidp(env,url.searchParams.get('start'),url.searchParams.get('end'),Object.fromEntries(['category','parcel','asset','discipline','originator','format','approval','q'].map(k=>[k,url.searchParams.get(k)||''])));return new Response(out.bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="M1_MIDP_'+(url.searchParams.get('start')||'All')+'_'+(url.searchParams.get('end')||'Dates')+'.xlsx"'}});}catch(e){return json({error:e.message},400);}
+   try{const out=await exportMidp(env,url.searchParams.get('start'),url.searchParams.get('end'),Object.fromEntries(['category','parcel','asset','discipline','originator','actualOriginator','format','approval','q'].map(k=>[k,url.searchParams.get(k)||''])));return new Response(out.bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="M1_MIDP_'+(url.searchParams.get('start')||'All')+'_'+(url.searchParams.get('end')||'Dates')+'.xlsx"'}});}catch(e){return json({error:e.message},400);}
 
   }
 

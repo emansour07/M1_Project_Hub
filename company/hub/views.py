@@ -85,7 +85,11 @@ def snapshot(req, key):
     if key not in ['snapshot','models','knowledge','midp','tracker','originals','checker']: return JsonResponse({'error':'Not found'},status=404)
     s = Snapshot.objects.filter(key=key).first()
     if not s: return JsonResponse({'error':'The company data connection is awaiting its first complete synchronization.'},status=503)
-    return JsonResponse(s.data)
+    data=s.data
+    if key=='midp':
+        from .midp_metadata import enrich_entries
+        data={**data,'entries':enrich_entries(data.get('entries',[]))}
+    return JsonResponse(data)
 
 @require_GET
 def content(req):
