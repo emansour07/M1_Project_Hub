@@ -2,6 +2,8 @@ import {assuranceRoute} from './assurance.mjs';
 import {receivedSnapshot,validateReceived} from './received.mjs';
 import {syncNextWorkbook} from './workbook-schedule.mjs';
 import {operationsRoute} from './operations.mjs';
+import {progressWorkspace,prepareProgressDrafts,storeProgressDrafts} from './progress-form.mjs';
+import {progressAdmin,saveProgressSettings,queueProgressMail} from './progress-requests.mjs';
 import {reminderSettings,saveReminderSettings} from './reminders.mjs';
 import {RequirementsStore,schema,permitted} from './requirements.mjs';
 import {assetCompleteness} from './completeness.mjs';
@@ -141,6 +143,21 @@ export class M1Application {
 
   if(path==='/api/forma/callback'&&url.searchParams.get('state')?.startsWith('editor_')){try{return await finishEditorLogin(env,request);}catch(e){return new Response(e.message,{status:403,headers:{'Content-Type':'text/plain'}});}}
 
+  if(path==='/progress-update')return new Response(this.templates.progressFormHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}});
+  if(path==='/admin/progress-requests')return owner?new Response(this.templates.progressRequestsHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}}):redirect('/admin/login');
+  if(path.startsWith('/api/progress/')){
+   const user=await editorIdentity(env,request,owner);if(!user)return json({error:'Sign in with your approved Autodesk email, or use owner access.'},401);
+   if(request.method!=='GET'&&request.headers.get('Origin')!==url.origin)return json({error:'Request not accepted.'},403);
+   try{
+    if(path==='/api/progress/workspace'&&request.method==='GET')return json({...progressWorkspace(await trackerSnapshot(env),user,readDrafts(env,user)),dashboardUrl:env.FRONTEND_URL});
+    if(path==='/api/progress/submit'&&request.method==='POST')return json(storeProgressDrafts(env,prepareProgressDrafts(await trackerSnapshot(env),user,await limitedJson(request,250000))));
+    if(!owner)return json({error:'Owner access required.'},403);
+    if(path==='/api/progress/requests'&&request.method==='GET')return json(await progressAdmin(env));
+    if(path==='/api/progress/requests'&&request.method==='PUT')return json(await saveProgressSettings(env,await limitedJson(request,30000)));
+    if(path==='/api/progress/send'&&request.method==='POST')return json(await queueProgressMail(env,'manual',(await limitedJson(request,1000)).requestId));
+    return json({error:'Not found'},404);
+   }catch(e){return json({error:e.message},400);}
+  }
   if(path==='/editor'||path==='/admin/editors'){if(path==='/admin/editors'&&!owner)return redirect('/admin/login');return new Response(trackerEditorHtml,{headers:{'Content-Type':'text/html;charset=utf-8'}});}
 
   if(path.startsWith('/api/editor/')||path==='/auth/editor/logout'){

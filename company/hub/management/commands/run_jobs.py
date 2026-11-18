@@ -9,7 +9,8 @@ class Command(BaseCommand):
     def handle(self,*args,**options):
         RateBucket.objects.filter(expires_at__lt=timezone.now()).delete()
         for row in AccessRequest.objects.filter(status='pending'): queue_request_notification(row)
-        queued = queue_reminders()
+        from hub.progress_updates import queue_requests
+        queued = queue_reminders()+queue_requests()
         sent = send_outbox()
         approved = list(AccessRequest.objects.filter(status='approved').values_list('id',flat=True)[:20])
         provisioned = sum(provision(ident) for ident in approved)

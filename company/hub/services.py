@@ -94,6 +94,11 @@ def send_outbox():
             if not config or config.paused or row.key.split(':')[1]!=today or row.recipient not in config.recipient_list():
                 Outbox.objects.filter(pk=ident,state='pending').update(state='cancelled')
                 continue
+        if row.key.startswith('progress:'):
+            from .progress_updates import mail_allowed
+            if not mail_allowed(row):
+                Outbox.objects.filter(pk=ident,state='pending').update(state='cancelled')
+                continue
         if not row.sender.lower().endswith('@arx.ing'): continue
         if not Outbox.objects.filter(pk=ident,state='pending').update(state='sending'): continue
         try:

@@ -176,7 +176,7 @@ def model_key(row):
         parts[3]=row.get('scopeAsset') or parts[3]
     return row.get('scopeId','')+'::'+'-'.join(parts)
 
-LEAD=[{'key':'deliveryStatus','label':'Delivery status','group':'Team update','type':'status'},
+LEAD=[{'key':'overallCompletion','label':'Overall completion %','group':'Team update','type':'percent'},{'key':'deliveryStatus','label':'Delivery status','group':'Team update','type':'status'},
       {'key':'responsibleTeam','label':'Responsible team','group':'Team update','type':'text'},
       {'key':'targetDate','label':'Target date','group':'Team update','type':'date'},
       {'key':'blocker','label':'Blocker','group':'Team update','type':'text'},

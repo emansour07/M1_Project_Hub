@@ -111,7 +111,8 @@ def prepare(draft):
     if not row:raise ValueError('This model is no longer in the current scoped tracker.')
     client=APS();raw,tip=client.download(SOURCES['tracker'])
     if tip['id']!=draft.source_version:raise ValueError('Excel changed since this draft. Refresh and submit a new draft.')
-    return patch_workbook(raw,draft,row,data['columns']),tip
+    columns=data['columns']+[c for c in LEAD if not any(x['key']==c['key'] for x in data['columns'])]
+    return patch_workbook(raw,draft,row,columns),tip
 
 def publish(draft_id,owner_email):
     if not settings.M1_TRACKER_WRITE_ENABLED:raise ValueError('Tracker publication is awaiting company Autodesk write-access configuration.')

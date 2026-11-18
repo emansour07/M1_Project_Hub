@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.urls import path
 from django.shortcuts import redirect
-from hub import views, auth, requirements, companies, received, assurance
+from hub import views, auth, requirements, companies, received, assurance, progress_updates
 
 urlpatterns = [
+    path('progress-update',progress_updates.form_page),
+    path('admin/progress-requests',progress_updates.requests_page),
+    path('api/progress/<str:action>',progress_updates.api),
     path('admin/assurance',assurance.workspace),
     path('api/assurance',assurance.api),
     path('api/assurance/<str:action>',assurance.api),
