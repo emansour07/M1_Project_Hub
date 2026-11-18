@@ -10,6 +10,9 @@ def attrs(tag): return {k:html.unescape(v) for k,v in re.findall(r'([\w:]+)="([^
 def filter_rows(entries,filters):
     out=[]
     for r in entries:
+        parts=str(r.get('name') or '').split('-')
+        parcel=(parts[1].strip().upper() if len(parts)>1 else '') or 'Not provided'
+        if filters.get('parcel') and parcel!=filters['parcel']:continue
         if any(filters.get(k) and r.get(f)!=filters[k] for k,f in [('asset','scopeId'),('discipline','discipline'),('originator','originator'),('category','category')]):continue
         if filters.get('format') and filters['format'] not in r.get('formats',[]):continue
         if filters.get('approval'):
