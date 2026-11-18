@@ -90,7 +90,7 @@ def snapshot(owner=False):
     for r in reports:
         if r['kind']=='qaqc':r['rows']=[{**x,'assessmentState':assessment_state(x,scan.data if scan else None)} for x in r['rows']]
     issues=read('issues',{'rows':[],'checkedAt':None,'pending':[],'unassigned':0});state=read('issue-state',{})
-    return {'reports':reports,'issues':{**issues,'rows':[r for r in issues['rows'] if r['scopeId'] in allowed or r['scopeId']=='project-coordination'],'pending':issues.get('pending',[]) if owner else None},'issueState':{'checkedAt':state.get('checkedAt'),'error':state.get('error') if owner else 'The latest issue update is unavailable. The last complete check is retained.' if state.get('error') else None},'links':read('links',[]),'assets':scope if owner else None}
+    return {'reports':reports,'issues':{**issues,'rows':[r for r in issues['rows'] if r['scopeId'] in allowed or r['scopeId'] in COORDINATION],'pending':issues.get('pending',[]) if owner else None},'issueState':{'checkedAt':state.get('checkedAt'),'error':state.get('error') if owner else 'The latest issue update is unavailable. The last complete check is retained.' if state.get('error') else None},'links':read('links',[]),'assets':scope if owner else None,'coordinationScopes':[COORDINATION['wide-island'],COORDINATION['wide-mainland']] if owner else None}
 def issue_placements(raw,client,cache):
     def get(path):
         if path not in cache:
@@ -117,16 +117,32 @@ def issue_placements(raw,client,cache):
             label=folder.get('attributes',{}).get('displayName') or folder.get('attributes',{}).get('name')
             if label:folders.insert(0,label)
             parent=folder.get('relationships',{}).get('parent',{}).get('data',{}).get('id')
-        documents.append({'id':urn,'name':name,'folderPath':folders})
+        documents.append({'id':urn,'name':name,'folderPath':folders,'viewName':str(link.get('details',{}).get('viewable',{}).get('name') or '')})
     return documents
 
+COORDINATION={
+    'project-coordination':{'id':'project-coordination','code':'Project coordination — asset not assigned','name':'Project coordination — asset not assigned'},
+    'wide-island':{'id':'wide-island','code':'Island-wide — interfaces / linear disciplines','name':'Island-wide — interfaces / linear disciplines','zone':'Island'},
+    'wide-mainland':{'id':'wide-mainland','code':'Mainland-wide — interfaces / linear disciplines','name':'Mainland-wide — interfaces / linear disciplines','zone':'Mainland'}}
+def wide_coordination(documents):
+    for evidence in [[d['name'] for d in documents],[p for d in documents for p in d['folderPath']],[d.get('viewName','') for d in documents]]:
+        zones=set()
+        for value in evidence:
+            parcel=re.match(r'^M1-(102|121)-',value,re.I)
+            if parcel:zones.add('Island' if parcel[1]=='102' else 'Mainland')
+            else:
+                for zone in ['Island','Mainland']:
+                    if re.search(r'\b'+zone+r'\b',value.replace('_',' '),re.I):zones.add(zone)
+        if zones:return COORDINATION['wide-'+next(iter(zones)).lower()] if len(zones)==1 else None
+    return None
+
 def issue_scope(raw,scope,documents):
-    if documents and all(d['name'].lower().endswith('.nwd') and (re.search(r'-BFM-|fed(?:e)?rat(?:ed|ion)',d['name'],re.I) or any(re.search('federated models',p,re.I) for p in d['folderPath'])) for d in documents):
-        return {'id':'project-coordination','code':'Project coordination — asset not assigned','name':'Project coordination — asset not assigned'}
     if documents:
         matches=[scoped(d,scope) for d in documents]
         ids={m['scopeId'] for m in matches if m}
-        return next((a for a in scope if a['id'] in ids),None) if all(matches) and len(ids)==1 else None
+        if all(matches) and len(ids)==1:return next((a for a in scope if a['id'] in ids),None)
+        if all(d['name'].lower().endswith('.nwd') and (re.search(r'-BFM-|fed(?:e)?rat(?:ed|ion)',d['name'],re.I) or any(re.search('federated models',p,re.I) for p in d['folderPath'])) for d in documents):return wide_coordination(documents) or COORDINATION['project-coordination']
+        return None
     mapped=scoped({'name':raw.get('title',''),'description':raw.get('description',''),'folderPath':[raw.get('title') or '',raw.get('locationDetails') or '']},scope)
     found=next((a for a in scope if mapped and a['id']==mapped['scopeId']),None)
     if not found and not raw.get('linkedDocuments') and not re.search(r'\bA51\b',' '.join([raw.get('title') or '',raw.get('locationDetails') or '']),re.I):
@@ -162,13 +178,13 @@ def sync_issues(client=None):
                 job['seen'].append(ident);assignment=assignments.get(ident,{})
                 if assignment.get('scopeId')=='exclude':continue
                 documents=issue_placements(raw,client,placement_cache)
-                found=next((a for a in scope if a['id']==assignment.get('scopeId')),None) if assignment.get('scopeId') else issue_scope(raw,scope,documents)
+                found=next((a for a in scope if a['id']==assignment.get('scopeId')),COORDINATION.get(assignment.get('scopeId'))) if assignment.get('scopeId') else issue_scope(raw,scope,documents)
                 if not found:
                     job['unassigned']+=1
                     if len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200],'model':'; '.join(d['name'] for d in documents)})
                     continue
-                if found['id']=='project-coordination' and len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200],'model':'; '.join(d['name'] for d in documents)})
-                job['rows'].append({'id':ident,'key':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:500],'status':text(raw.get('status')) or 'Unknown','scopeId':found['id'],'asset':found.get('proposed') or found['code'],'assetName':found['name'],'projectLevel':found['id']=='project-coordination','discipline':assignment.get('discipline') or placement_discipline(documents),'model':'; '.join(d['name'] for d in documents),'owner':text(raw.get('assignedTo')),'ownerType':text(raw.get('assignedToType')),'created':raw.get('createdAt'),'updated':raw.get('updatedAt'),'due':raw.get('dueDate'),'closed':raw.get('closedAt'),'description':text(raw.get('description'))[:3000],'url':f'https://acc.autodesk.eu/build/issues/projects/{settings.M1_PROJECT_ID}?issueId={ident}'})
+                if found['id'] in COORDINATION and len(job['pending'])<200:job['pending'].append({'id':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:200],'model':'; '.join(d['name'] for d in documents)})
+                job['rows'].append({'id':ident,'key':ident,'reference':text(raw.get('displayId')),'title':text(raw.get('title'))[:500],'status':text(raw.get('status')) or 'Unknown','scopeId':found['id'],'asset':found.get('proposed') or found['code'],'assetName':found['name'],'projectLevel':found['id'] in COORDINATION,'coordinationZone':found.get('zone'),'discipline':assignment.get('discipline') or placement_discipline(documents),'model':'; '.join(d['name'] for d in documents),'owner':text(raw.get('assignedTo')),'ownerType':text(raw.get('assignedToType')),'created':raw.get('createdAt'),'updated':raw.get('updatedAt'),'due':raw.get('dueDate'),'closed':raw.get('closedAt'),'description':text(raw.get('description'))[:3000],'url':f'https://acc.autodesk.eu/build/issues/projects/{settings.M1_PROJECT_ID}?issueId={ident}'})
             job['offset']+=len(result)
             if job['offset']>total or not result and job['offset']<total:raise ValueError('Incomplete issue page.')
             if job['offset']==total:
@@ -213,7 +229,7 @@ def api(req,action=''):
                 record.data=[r for r in reports if r is not old]+[prepared];record.save();return JsonResponse({'saved':True,'report':prepared})
         if action=='assign':
             current=read('issues',{'rows':[],'pending':[]})
-            if not any(r['id']==data.get('id') for r in current['rows']+current['pending']) or data.get('scopeId') not in ['exclude',*[a['id'] for a in scope]] or not isinstance(data.get('discipline'),str) or len(data['discipline'])>100:raise ValueError('Select a current issue and scoped asset.')
+            if not any(r['id']==data.get('id') for r in current['rows']+current['pending']) or data.get('scopeId') not in ['exclude','wide-island','wide-mainland',*[a['id'] for a in scope]] or not isinstance(data.get('discipline'),str) or len(data['discipline'])>100:raise ValueError('Select a current issue and scoped asset.')
             assignments=read('assignments',{});assignments[data['id']]={'scopeId':data['scopeId'],'discipline':data['discipline']};put('assignments',assignments);put('issue-state',{});put('issue-job',None);return JsonResponse({'saved':True})
         if action=='link':
             if not any(r['id']==data.get('issueId') for r in snapshot()['issues']['rows']) or not any(r['kind']=='clashes' and r['batch']==data.get('batch') and any(x['key']==data.get('key') for x in r['rows']) for r in read('reports',[])):raise ValueError('Choose a saved clash and in-scope ACC issue.')

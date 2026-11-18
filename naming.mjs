@@ -4,17 +4,21 @@ export function parseNamingRules(rows){
  if(!/Project.*Parcel/i.test(text(rows[0]?.[0]))||text(rows[1]?.[1]).toUpperCase()!=='CODE')throw Error('TIDP naming picklist layout changed.');
  return {fields:indices.map((column,i)=>({index:fields[i],label:labels[i],values:rows.slice(2).flatMap(r=>{const code=text(r[column]);return /^[A-Z0-9]+$/.test(code)?[{code,description:text(r[column-1])}]:[]})})),pattern:'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]'};
 }
+export function originalParcelRules(rules){return {...rules,fields:(rules?.fields||[]).map(f=>f.index===1?{...f,values:f.values.filter(v=>v.code!=='FXX')}:f)};}
+export function expectedParcel(asset,mapping){let found=mapping.filter(r=>r.proposed===asset);if(!found.length)found=mapping.filter(r=>r.existing===asset&&!r.mappingPending);const codes=[...new Set(found.map(r=>String(r.section||'').replace('.','')).filter(v=>/^\d{3}$/.test(v)))];return codes.length===1?codes[0]:null;}
 export function checkName(name,mapping,rules){
  if(!mapping?.length||!rules?.fields?.length)return {state:'unchecked',issues:[],suggestion:null};
+ rules=originalParcelRules(rules);
  const original=text(name),ext=/\.([a-z0-9]+)$/i.exec(original),stem=ext?original.slice(0,-ext[0].length):original,parts=stem.split('-'),issues=[],fixed=[...parts];
  const add=(field,message,corrected=null)=>issues.push({field,message,corrected});
  if(!ext)add('Extension','File extension is missing.');
  if(parts.length!==9&&parts.length!==10){add('Structure','Use '+rules.pattern+'.');return {state:'warning',issues,suggestion:null};}
  for(let i=0;i<parts.length;i++)if(parts[i]!==parts[i].toUpperCase()){fixed[i]=parts[i].toUpperCase();add('Case','Use uppercase naming codes.',fixed[i]);}
  if(fixed[0]!=='M1'){fixed[0]='M1';add('Project','Project code must be M1.','M1');}
- if(fixed[1]!=='FXX'){fixed[1]='FXX';add('Parcel','The updated M1 convention requires FXX as the second segment.','FXX');}
+ const parcelRule=rules.fields.find(f=>f.index===1),expected=expectedParcel(fixed[3],mapping);
+ if(expected&&fixed[1]!==expected&&parcelRule?.values.some(v=>v.code===expected)){fixed[1]=expected;add('Parcel','Use the original parcel code '+expected+' for this asset, as defined by the TIDP section.',expected);}
  for(const field of rules.fields)if(!field.values.some(v=>v.code===fixed[field.index]))add(field.label,'“'+fixed[field.index]+'” is not in the TIDP '+field.label.toLowerCase()+' picklist.');
- const asset=fixed[3],parcel=parts[1].toUpperCase(),numeric=/^\d{2,3}$/.test(parcel),scoped=numeric?mapping.filter(r=>Number(String(r.section||'').replace('.',''))===Number(parcel)):mapping;
+ const asset=fixed[3],parcel=fixed[1],numeric=/^\d{2,3}$/.test(parcel),scoped=numeric?mapping.filter(r=>Number(String(r.section||'').replace('.',''))===Number(parcel)):mapping;
  // Already-proposed codes take precedence over legacy codes with the same text.
  if(!['XXX','YYY','ZZZ'].includes(asset)&&!scoped.some(r=>r.proposed===asset)){
   const candidates=[...new Set(scoped.filter(r=>r.existing===asset).map(r=>r.proposed))];

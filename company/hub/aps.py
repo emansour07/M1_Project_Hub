@@ -116,10 +116,11 @@ class APS:
         return url
     def download(self, item):
         tip = self.tip(item)
-        if tip.get('attributes',{}).get('storageSize',0) > 25_000_000: raise ProviderError('Workbook exceeds 25 MB.')
+        limit=80_000_000 if '_TIDP_' in (tip.get('attributes',{}).get('displayName') or tip.get('attributes',{}).get('name') or '').upper() else 25_000_000
+        if tip.get('attributes',{}).get('storageSize',0)>limit:raise ProviderError('Workbook exceeds its download limit.')
         path = self.storage_path(tip['relationships']['storage']['data']['id'])
         signed = self.call(path+'/signeds3download')
-        return request(self.signed_url(signed['url']), limit=25_000_000), tip
+        return request(self.signed_url(signed['url']), limit=limit), tip
     def upload_storage(self, folder, filename, file):
         storage = self.call(self.project+'/storage','POST',{'jsonapi':{'version':'1.0'},'data':{'type':'objects','attributes':{'name':filename},'relationships':{'target':{'data':{'type':'folders','id':folder}}}}})['data']['id']
         path = self.storage_path(storage)

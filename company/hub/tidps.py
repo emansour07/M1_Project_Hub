@@ -46,7 +46,7 @@ def compact_workbook(data):
     """Remove blank formatted columns while streaming oversized worksheet XML."""
     result=io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(data)) as source_zip,zipfile.ZipFile(result,'w',zipfile.ZIP_DEFLATED) as target:
-        if sum(i.file_size for i in source_zip.infolist())>256_000_000:raise ValueError('TIDP exceeds the reader size limit.')
+        if sum(i.file_size for i in source_zip.infolist())>700_000_000:raise ValueError('TIDP exceeds the reader size limit.')
         for info in source_zip.infolist():
             if not re.fullmatch(r'\[Content_Types\].xml|_rels/.rels|xl/(workbook.xml|_rels/workbook.xml.rels|styles.xml|sharedStrings.xml|theme/theme1.xml|worksheets/sheet\d+.xml)',info.filename):continue
             if '/worksheets/' not in info.filename:

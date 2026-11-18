@@ -14,7 +14,7 @@ export async function listTidps(env,policy){
  while(path){if(seen.has(path)||seen.size>=10)throw Error('TIDP folder pagination limit exceeded.');seen.add(path);const page=await getAPS(path,token);for(const item of page.data||[]){const name=item.attributes?.displayName||item.attributes?.name||'';if(item.type==='items'&&/_TIDP_.+\.xlsx$/i.test(name)&&!name.startsWith('~$'))files.push({id:item.id,name,versionId:item.relationships?.tip?.data?.id});}const next=page.links?.next?.href||page.links?.next;if(next){const u=new URL(next,'https://developer.api.autodesk.com');if(u.origin!=='https://developer.api.autodesk.com'||!u.pathname.startsWith('/data/v1/projects/'+encodeURIComponent(project)+'/folders/'))throw Error('Unexpected TIDP pagination link.');path=u.pathname+u.search;}else path=null;}
  if(!files.length)throw Error('No scoped TIDPs found in the main TIDP folder.');if(files.length>100)throw Error('TIDP folder exceeds 100 workbooks.');return files.sort((a,b)=>a.name.localeCompare(b.name));
 }
-export async function tidpStatus(env){const s=await read(env,'state');return s?{active:!!s.active,done:s.index||0,total:s.list?.length||0,failed:!!s.failed,checkedAt:s.checkedAt||null}:null;}
+export async function tidpStatus(env){const s=await read(env,'state');return s?{active:!!s.active,done:s.index||0,total:s.list?.length||0,failed:!!s.failed,currentSource:s.active?s.list?.[s.index]?.name||null:null,leaseUntil:s.leaseUntil||null,checkedAt:s.checkedAt||null}:null;}
 export async function tidpSnapshot(env){const meta=await read(env,'latest');if(!meta)return null;const entries=[];for(let i=0;i<meta.chunks;i++){const chunk=await read(env,meta.generation+'/entries/'+i);if(!chunk)throw Error('Merged TIDP register is incomplete.');entries.push(...chunk);}const {recordSources,...publicMeta}=meta,kept=entries.filter(inOwnerScope);return {...publicMeta,entries:kept,total:kept.length,dated:kept.filter(r=>r.plannedDate).length,missingSources:(meta.missingSources||[]).filter(inOwnerScope),checking:await tidpStatus(env)};}
 export async function syncTidpBatch(env,force=false,services={}){
  const policy=await getScope(env);if(!policy)throw Error('Scope is not ready.');let state=await read(env,'state');const now=Date.now();if(state?.leaseUntil>now)return {updating:true};if(!state?.active&&!force&&state?.checkedAt>now-900000&&state.scopeVersion===policy.revision&&state.parserVersion===VERSION)return {updating:false};
@@ -25,7 +25,7 @@ export async function syncTidpBatch(env,force=false,services={}){
   for(let batch=0;batch<100&&state.index<state.list.length;batch++){const item=state.list[state.index],key=state.generation+'/record/'+state.index;
    const cachedIndex=prior?.scopeVersion===policy.revision&&(prior.parserVersion===VERSION||prior.parserVersion===2||prior.parserVersion===1&&sourceScope(item.name,policy))?(prior.recordSources||prior.source.sources).findIndex(s=>s.itemId===item.id&&s.versionId===item.versionId):-1;
    if(cachedIndex>=0){const cached=await read(env,prior.generation+'/record/'+cachedIndex);if(!cached)throw Error('TIDP cache is incomplete.');await put(env,key,cached);state.index++;}
-   else{if(downloads>=(services.batchSize||3))break;const data=await(services.download||downloadItemWorkbook)(env,item.id);const record=extractTidp(data.bytes,data.source,policy);await put(env,key,pack(record));state.index++;downloads++;}
+   else{if(downloads>=(services.batchSize||3))break;const data=await(services.download||downloadItemWorkbook)(env,item.id,{tidp:true});const record=extractTidp(data.bytes,data.source,policy);await put(env,key,pack(record));state.index++;downloads++;}
    await put(env,'state',state);if(Date.now()-batchStarted>5000)break;
   }
   if(state.index===state.list.length){
@@ -41,7 +41,12 @@ export async function syncTidpBatch(env,force=false,services={}){
    if(env.SQL)env.SQL.exec("DELETE FROM objects WHERE key LIKE 'm1/tidps/%' AND key NOT IN ('m1/tidps/latest','m1/tidps/state') AND key NOT LIKE ? AND key NOT LIKE ?",PREFIX+state.generation+'/%',PREFIX+(prior?.generation||state.generation)+'/%');
   }
   state.leaseUntil=0;await put(env,'state',state);return {updating:state.active,done:state.index,total:state.list.length};
- }catch(e){state.failed=true;state.leaseUntil=0;await put(env,'state',state);throw e;}
+ }catch(e){
+  // A TIDP can be replaced or renamed while a multi-batch scan is in flight.
+  // Restart against the current folder instead of retrying a removed version forever.
+  try{const current=await(services.list||listTidps)(env,policy),before=new Map(state.list.map(x=>[x.id,x.versionId]));if(current.length!==state.list.length||current.some(x=>!before.has(x.id)||before.get(x.id)!==x.versionId)){state.active=false;state.checkedAt=0;state.failed=false;state.leaseUntil=0;await put(env,'state',state);return {updating:true,restarting:true};}}catch{}
+  console.error('TIDP source refresh failed',state.index,state.list?.[state.index]?.name,e.message);state.failed=true;state.leaseUntil=0;state.error=e.message;await put(env,'state',state);throw e;
+ }
 }
 export async function exportMergedTidps(env,start,end,filters={}){
  const saved=await tidpSnapshot(env);if(!saved)throw Error('The TIDPs are being read. Export will be available after the first complete merge.');

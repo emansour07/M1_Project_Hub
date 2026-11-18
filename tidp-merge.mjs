@@ -14,19 +14,26 @@ const col=s=>[...s].reduce((n,c)=>n*26+c.charCodeAt(0)-64,0)-1;
 const elements=(xml,tag)=>[...xml.matchAll(new RegExp('<'+tag+'\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/'+tag+'>)','g'))].map(m=>m[0]);
 // Some source sheets format all 16,384 Excel columns. Stream their XML and retain
 // the delivery area only, rather than allocating the expanded workbook in memory.
-function readParts(bytes){
+function createTidpReader(){
  const parts={};let total=0,failure=null;
  const unzip=new Unzip(file=>{
   if(!/^(?:\[Content_Types\].xml|_rels\/.rels|xl\/(?:workbook.xml|_rels\/workbook.xml.rels|sharedStrings.xml|styles.xml|theme\/theme1.xml|worksheets\/sheet\d+.xml))$/.test(file.name))return;
   let pending='',result='',inRows=false,doneRows=false,size=0;const decoder=new TextDecoder(),sheet=file.name.includes('/worksheets/');
   const trim=raw=>raw.replace(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g,c=>{const address=/\br="([A-Z]+)\d+"/.exec(c)?.[1];return address&&(col(address)>255||col(address)>63&&!/<(?:v|f|is)\b/.test(c))?'':c;});
-  file.ondata=(error,data,final)=>{if(error){failure=error;return;}if(failure)return;size+=data.length;total+=data.length;if(size>128000000||total>256000000){failure=Error('TIDP exceeds the workbook size limit.');return;}pending+=decoder.decode(data,{stream:!final});
+  file.ondata=(error,data,final)=>{if(error){failure=error;return;}if(failure)return;size+=data.length;total+=data.length;if(size>350000000||total>700000000){failure=Error('TIDP exceeds the workbook size limit.');return;}pending+=decoder.decode(data,{stream:!final});
    if(sheet){if(!inRows&&!doneRows){const start=pending.indexOf('<sheetData');if(start>=0){const end=pending.indexOf('>',start);if(end>=0){result+=pending.slice(0,end+1);pending=pending.slice(end+1);inRows=true;}}}
     if(inRows){while(true){const start=pending.indexOf('<row');if(start<0)break;const tagEnd=pending.indexOf('>',start);if(tagEnd<0)break;const end=pending[tagEnd-1]==='/'?tagEnd+1:pending.indexOf('</row>',tagEnd);if(end<0)break;const stop=pending[tagEnd-1]==='/'?end:end+6;result+=trim(pending.slice(start,stop));pending=pending.slice(stop);}if(pending.includes('</sheetData>')){inRows=false;doneRows=true;}if(pending.length>6000000){failure=Error('TIDP row exceeds the reader limit.');return;}}
    }
    if(final){result+=pending;parts[file.name]=sheet?result.replace(/<col\b[^>]*\/>/g,t=>{const a=attrs(t);if(+a.min>256)return '';return +a.max>256?t.replace(/max="\d+"/,'max="256"'):t;}).replace(/<dimension\b[^>]*\/>/,''):result;if(parts[file.name].length>10000000)failure=Error('TIDP delivery content exceeds the reader limit.');}
   };file.start();
- });unzip.register(UnzipInflate);for(let i=0;i<bytes.length;i+=2048){unzip.push(bytes.subarray(i,i+2048),i+2048>=bytes.length);if(failure)throw failure;}if(failure)throw failure;return parts;
+ });unzip.register(UnzipInflate);return {push(bytes,final=false){for(let i=0;i<bytes.length;i+=2048){unzip.push(bytes.subarray(i,i+2048),final&&i+2048>=bytes.length);if(failure)throw failure;}if(!bytes.length&&final)unzip.push(bytes,true);if(failure)throw failure;},finish(){return parts;}};
+}
+function readParts(bytes){const reader=createTidpReader();reader.push(bytes,true);return reader.finish();}
+export async function compactTidpStream(stream){
+ const parser=createTidpReader(),reader=stream.getReader();let size=0;
+ try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>80000000)throw Error('TIDP download exceeds the 80 MB limit.');parser.push(value);}parser.push(new Uint8Array(),true);return zipSync(Object.fromEntries(Object.entries(parser.finish()).map(([k,v])=>[k,strToU8(v)])),{level:1});}
+ catch(e){await reader.cancel().catch(()=>{});throw e;}
+ finally{reader.releaseLock();}
 }
 export function compactTidp(bytes){return zipSync(Object.fromEntries(Object.entries(readParts(bytes)).map(([k,v])=>[k,strToU8(v)])),{level:1});}
 export function sourceScope(name,policy){

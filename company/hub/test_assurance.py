@@ -51,3 +51,12 @@ class AssuranceTests(TestCase):
         federation=[{'name':'M1-FXX-SAP-XXX-05-BM100-BFM-XX-000001.nwd','folderPath':['3.5 Federated Models']}]
         self.assertEqual(issue_scope(raw,self.scope,federation)['id'],'project-coordination')
         self.assertIsNone(issue_scope(raw,self.scope,[{'name':'M1-FXX-SAP-A51-05-BM003.rvt','folderPath':[]}]))
+    def test_asset_federation_precedes_wide_and_parcel_identifies_wide(self):
+        from .assurance import issue_scope
+        raw={'title':'Coordination'}
+        docs=[{'name':'M1-102-SAP-US1-05-BM100-BFM-XX-000001.nwd','folderPath':['3.5 Federated Models']}]
+        self.assertEqual(issue_scope(raw,self.scope,docs)['id'],'Island-A33')
+        docs[0]['name']='M1-121-SAP-XXX-05-BM100-BFM-XX-000001.nwd'
+        self.assertEqual(issue_scope(raw,self.scope,docs)['id'],'wide-mainland')
+        docs[0]['name']='M1-FXX-SAP-XXX-05-BM100-BFM-XX-000001.nwd';docs[0]['viewName']='M1-102-ARX-XXX-05-BM100-BFM-XX-000001.nwd'
+        self.assertEqual(issue_scope(raw,self.scope,docs)['id'],'wide-island')

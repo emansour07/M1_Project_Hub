@@ -15,7 +15,7 @@ export async function issuePlacements(raw,read,cache=new Map()){
    const label=folder.attributes?.displayName||folder.attributes?.name;if(label)folderPath.unshift(label);
    parent=folder.relationships?.parent?.data?.id;
   }
-  documents.push({id:urn,name,folderPath});
+  documents.push({id:urn,name,folderPath,viewName:String(link.details?.viewable?.name||'')});
  }
  return documents;
 }
@@ -26,3 +26,11 @@ export function placementDiscipline(documents){
 
 export const PROJECT_COORDINATION={id:'project-coordination',code:'Project coordination',name:'Project coordination — asset not assigned'};
 export const isFederatedPlacement=documents=>documents.length>0&&documents.every(d=>/\.nwd$/i.test(d.name)&&(/-BFM-/i.test(d.name)||/fed(?:e)?rat(?:ed|ion)/i.test(d.name)||(d.folderPath||[]).some(p=>/federated models/i.test(p))));
+
+export const WIDE_COORDINATION=[{id:'wide-island',code:'Island-wide',name:'Island-wide — interfaces / linear disciplines',zone:'Island'},{id:'wide-mainland',code:'Mainland-wide',name:'Mainland-wide — interfaces / linear disciplines',zone:'Mainland'}];
+export const coordinationScope=id=>[PROJECT_COORDINATION,...WIDE_COORDINATION].find(s=>s.id===id);
+export function wideCoordination(documents){
+ const zones=values=>{const found=new Set();for(const value of values){const name=String(value||''),parcel=/^M1-(102|121)-/i.exec(name)?.[1];if(parcel)found.add(parcel==='102'?'Island':'Mainland');else{if(/\bisland\b/i.test(name.replaceAll('_',' ')))found.add('Island');if(/\bmainland\b/i.test(name.replaceAll('_',' ')))found.add('Mainland');}}return found;};
+ for(const evidence of [documents.map(d=>d.name),documents.flatMap(d=>d.folderPath||[]),documents.map(d=>d.viewName)]){const found=zones(evidence);if(found.size)return found.size===1?WIDE_COORDINATION.find(s=>found.has(s.zone)):null;}
+ return null;
+}

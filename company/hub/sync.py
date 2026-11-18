@@ -34,10 +34,15 @@ def check_name(name,mapping,rules):
     for p,f in zip(parts,fixed):
         if p!=f:add('Case','Use uppercase naming codes.',f)
     if fixed[0]!='M1':fixed[0]='M1';add('Project','Project code must be M1.','M1')
-    if fixed[1]!='FXX':fixed[1]='FXX';add('Parcel','The second segment must be FXX.','FXX')
+    rules={**rules,'fields':[{**r,'values':[v for v in r['values'] if v['code']!='FXX']} if r['index']==1 else r for r in rules['fields']]}
+    matches=[m for m in mapping if m.get('proposed')==fixed[3]] or [m for m in mapping if m.get('existing')==fixed[3] and not m.get('mappingPending')]
+    parcels={str(m.get('section','')).replace('.','') for m in matches if re.fullmatch(r'\d{3}',str(m.get('section','')).replace('.',''))}
+    expected=next(iter(parcels)) if len(parcels)==1 else None
+    allowed=next((r['values'] for r in rules['fields'] if r['index']==1),[])
+    if expected and expected!=fixed[1] and any(v['code']==expected for v in allowed):fixed[1]=expected;add('Parcel','Use the original parcel code '+expected+' for this asset, as defined by the TIDP section.',expected)
     for rule in rules['fields']:
         if fixed[rule['index']] not in {v['code'] for v in rule['values']}:add(rule['label'],f'{fixed[rule["index"]]} is not in the TIDP picklist.')
-    asset=fixed[3];parcel=parts[1].upper()
+    asset=fixed[3];parcel=fixed[1]
     local=[m for m in mapping if not parcel.isdigit() or m['section'].replace('.','')==str(int(parcel))]
     if asset not in ['XXX','YYY','ZZZ'] and not any(m['proposed']==asset for m in local):
         candidates={m['proposed'] for m in local if m['existing']==asset}

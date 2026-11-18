@@ -11,9 +11,9 @@ from .sync import shared_checks,grouped_models,check_name,model
 from .tracker import DraftForm,patch_workbook
 
 SCOPE=[{'id':'Island-A48','code':'A48','proposed':'CRA','name':'Gatehouse','zone':'Island','aliases':['A48','CRA'],'ambiguous':[]}]
-NAME='M1-FXX-SAP-CRA-05-BM012-BNM-ZZ-000001'
+NAME='M1-102-SAP-CRA-05-BM012-BNM-ZZ-000001'
 MAPPING=[{'existing':'A48','proposed':'CRA','section':'10.2'}]
-RULES={'fields':[{'index':1,'label':'Parcel','values':[{'code':'FXX'}]}],'pattern':'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]'}
+RULES={'fields':[{'index':1,'label':'Parcel','values':[{'code':'102'},{'code':'121'},{'code':'YYY'}]}],'pattern':'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]'}
 
 def workbook():
     w=Workbook();s=w.active;s.title='102-ARX-A48'
@@ -46,7 +46,7 @@ class WorkbookTests(SimpleTestCase):
         self.assertIsNone(scoped({'name':NAME.replace('CRA','XYZ'),'folderPath':['A48']},SCOPE))
     def test_ambiguous_legacy_asset_does_not_guess(self):
         scope=[{**SCOPE[0],'ambiguous':['A48']},{**SCOPE[0],'id':'Mainland-A48','proposed':'GS5','zone':'Mainland','aliases':['A48','GS5'],'ambiguous':['A48']}]
-        self.assertIsNone(scoped({'name':NAME.replace('CRA','A48')},scope))
+        self.assertIsNone(scoped({'name':NAME.replace('CRA','A48').replace('102','FXX')},scope))
 
 class CompletenessTests(SimpleTestCase):
     def policy(self):return SimpleNamespace(enabled=True,denominator_confirmed=True,approved_statuses='approved\napproved w/ comments')
@@ -86,7 +86,7 @@ class CheckerTests(SimpleTestCase):
         self.assertFalse(model(self.f('pdf')));self.assertFalse(model(self.f('dwg',name=NAME.replace('BM012','BM032')+'.dwg')))
     def test_naming_corrects_only_unambiguous_fields(self):
         result=check_name(NAME.replace('FXX','102').replace('CRA','A48')+'.rvt',MAPPING,RULES)
-        self.assertEqual(result['suggestion'],NAME+'.rvt')
+        self.assertEqual(result['suggestion'],NAME.replace('FXX','102')+'.rvt')
 
 class DraftTests(SimpleTestCase):
     def test_editor_form_omits_protected_and_unassigned_fields(self):

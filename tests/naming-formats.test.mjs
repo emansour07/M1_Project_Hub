@@ -2,18 +2,18 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {groupModels} from '../model-formats.mjs';import {checkName,parseNamingRules} from '../naming.mjs';import {buildProgress,isProgressModel} from '../progress-core.mjs';
 const stem='M1-102-SAP-A48-05-BM012-BNM-ZZ-000001';
 const mapping=[{section:'10.2',existing:'A48',proposed:'CRA'},{section:'12.1',existing:'A48',proposed:'GS5'}];
-const rules={fields:[{index:1,label:'Parcel',values:[{code:'102'},{code:'FXX'}]},{index:2,label:'Originator',values:[{code:'SAP'}]},{index:4,label:'Stage',values:[{code:'05'}]}],pattern:'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]'};
+const rules={fields:[{index:1,label:'Parcel',values:[{code:'102'},{code:'121'},{code:'YYY'}]},{index:2,label:'Originator',values:[{code:'SAP'}]},{index:4,label:'Stage',values:[{code:'05'}]}],pattern:'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]'};
 test('naming corrects a scoped old code but never guesses an ambiguous code',()=>{
- const checked=checkName(stem+'.pdf',mapping,rules);assert.equal(checked.suggestion,stem.replace('A48','CRA').replace('102','FXX')+'.pdf');
- const ambiguous=checkName(stem.replace('102','FXX')+'.pdf',mapping,rules);assert.equal(ambiguous.suggestion,null);assert.match(ambiguous.issues[0].message,/multiple proposed/);
- assert.equal(checkName(stem.replace('A48','CRA').replace('102','FXX')+'.pdf',mapping,rules).state,'pass');
+ const checked=checkName(stem+'.pdf',mapping,rules);assert.equal(checked.suggestion,stem.replace('A48','CRA')+'.pdf');
+ const ambiguous=checkName(stem.replace('102','FXX')+'.pdf',mapping,rules);assert.equal(ambiguous.suggestion,null);assert(ambiguous.issues.some(i=>/multiple proposed/.test(i.message)));
+ assert.equal(checkName(stem.replace('A48','CRA')+'.pdf',mapping,rules).state,'pass');
 });
 test('unknown picklist values and malformed numbers do not receive invented replacements',()=>{
- const result=checkName(stem.replace('SAP','BAD').replace('000001','1')+'.pdf',mapping,rules);assert.equal(result.suggestion,null);assert.equal(result.issues.length,4);
+ const result=checkName(stem.replace('SAP','BAD').replace('000001','1')+'.pdf',mapping,rules);assert.equal(result.suggestion,null);assert.equal(result.issues.length,3);
  assert.equal(checkName('bad_name.pdf',mapping,rules).state,'warning');assert.equal(checkName(stem+'.pdf',[],rules).state,'unchecked');
 });
 test('a proposed code takes precedence over an identical old code',()=>{
- const rows=[...mapping,{section:'10.2',existing:'CRA',proposed:'OTHER'}];assert.equal(checkName(stem.replace('A48','CRA').replace('102','FXX')+'.pdf',rows,rules).state,'pass');
+ const rows=[...mapping,{section:'10.2',existing:'CRA',proposed:'OTHER'}];assert.equal(checkName(stem.replace('A48','CRA')+'.pdf',rows,rules).state,'pass');
 });
 test('picklists are taken from named TIDP columns, retaining leading zeros',()=>{
  const rows=[['01 - Project / Parcel'],[null,'CODE'],['Parcel','011',null,'Company','SAP',null,'Stage','05',null,'Model','BM012',null,'Native','BNM',null,'Level','ZZ']];
@@ -31,3 +31,4 @@ test('reference and progressed model totals deduplicate by filename across forma
  const files=['reference','progress1'].flatMap(source=>['rvt','ifc','nwc'].map(ext=>({id:source+ext,name:stem+'.'+ext,source})));
  const result=buildProgress(files,mapping,[],1);assert.equal(result.files.length,1);assert.equal(result.availability[0].models,1);assert.equal(result.availability[0].reference,1);assert.equal(result.availability[0].progressed,1);
 });
+test('restored parcel codes remain intact and FXX is corrected only from unique section evidence',()=>{const r=checkName('M1-FXX-SAP-CRA-05-BM012-BNM-ZZ-000001.rvt',mapping,rules);assert.equal(r.suggestion,'M1-102-SAP-CRA-05-BM012-BNM-ZZ-000001.rvt');const wide=checkName('M1-FXX-SAP-XXX-05-BM100-BFM-XX-000001.nwd',mapping,rules);assert.equal(wide.suggestion,null);assert(wide.issues.some(i=>i.field==='Parcel'));assert.equal(checkName('M1-121-SAP-GS5-05-BM012-BNM-ZZ-000001.rvt',mapping,rules).state,'pass');});

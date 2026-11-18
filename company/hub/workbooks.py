@@ -232,8 +232,8 @@ def sync_workbooks(client=None, persist=True):
     labels=['Parcel','Originator','Project stage','Package / discipline','Document type','Level']
     rules={'pattern':'Project-Parcel-Originator-Asset-Stage-Package-Type-Level-Number[-Revision]',
         'fields':[{'index':idx,'label':label,'values':[{'code':upper(r[c]),'description':text(r[c-1])} for r in raw[2:] if re.fullmatch('[A-Z0-9]+',text(r[c]))]} for c,idx,label in zip([1,4,7,10,13,16],[1,2,4,5,6,7],labels)]}
-    # The approved parcel appendix supersedes the earlier parcel picklist.
-    rules['fields'][0]['values']=[{'code':'FXX','description':'Fixed M1 parcel code'}]
+    # Original parcel codes restored; read the current TIDP picklist.
+    rules['fields'][0]['values']=[v for v in rules['fields'][0]['values'] if v['code']!='FXX']
     w.close();mapping_source=source(tip,TIDP_ITEM)
     data,tip=client.download(SCOPE_ITEM);w=book(data)
     scope=parse_scope(list(w['Scope mapping'].values),mapping);w.close()

@@ -1,3 +1,4 @@
+import {compactTidpStream} from './tidp-merge.mjs';
 import {accessToken,getAPS} from './forma.mjs';
 export const sources={
  originalMidpFolder:'urn:adsk.wipemea:fs.folder:co.ol6jt2GMQpCKRYKff6hhmA',
@@ -22,20 +23,22 @@ export async function checkSourceAccess(env){
 }
 export async function downloadWorkbook(env,key){
  if(!['tracker','midp','tidp','scope'].includes(key))throw Error('Unknown source.');
- return downloadItemWorkbook(env,sources[key]);
+ return downloadItemWorkbook(env,sources[key],{tidp:key==='tidp'});
 }
-export async function downloadItemWorkbook(env,itemId){
+export async function downloadItemWorkbook(env,itemId,{tidp=false}={}){
  const token=await accessToken(env),p=encodeURIComponent('b.'+env.ACC_PROJECT_ID.replace(/^b\./,''));
  const tip=await getAPS(`/data/v1/projects/${p}/items/${encodeURIComponent(itemId)}/tip`,token);
  const v=tip.data,urn=v?.relationships?.storage?.data?.id;
  const match=/^urn:adsk.objects:os.object:([^/]+)\/(.+)$/.exec(urn||'');
  if(!match)throw Error('Workbook storage is unavailable.');
- if(v.attributes?.storageSize>25000000)throw Error('Workbook exceeds the 25 MB limit.');
+ if(v.attributes?.storageSize>(tidp?80000000:25000000))throw Error(tidp?'TIDP exceeds the 80 MB download limit.':'Workbook exceeds the 25 MB limit.');
  const signed=await getAPS(`/oss/v2/buckets/${encodeURIComponent(match[1])}/objects/${encodeURIComponent(match[2])}/signeds3download`,token);
  const url=new URL(signed.url);
  if(url.protocol!=='https:'||!/(^|\.)amazonaws\.com$/.test(url.hostname))throw Error('Unexpected download host.');
  const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(25000)});
  if(!response.ok)throw Error('Workbook download failed.');
+ const source={itemId,versionId:v.id,name:v.attributes?.displayName||v.attributes?.name||itemId,version:v.attributes?.versionNumber,updatedAt:v.attributes?.lastModifiedTime,checkedAt:Date.now()};
+ if(tidp)return {bytes:await compactTidpStream(response.body),source};
  const reader=response.body.getReader(),chunks=[];let size=0;
  while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>25000000){await reader.cancel();throw Error('Workbook exceeds the 25 MB limit.');}chunks.push(value);}
  const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}

@@ -4,7 +4,7 @@ import {leadColumns} from './tracker-fields.mjs';
 import {filterDeliverables} from './delivery-core.mjs';
 import {read,utils} from 'xlsx';
 import {downloadWorkbook} from './sources.mjs';
-import {parseNamingRules} from './naming.mjs';
+import {parseNamingRules,originalParcelRules} from './naming.mjs';
 import {parseScope,scopePolicy,scopedMapping,scopedFile,getScope,inOwnerScope} from './scope.mjs';
 import {parseMidpDeliverables,filterMidpWorkbook,dateRange} from './midp.mjs';
 const text=v=>String(v??'').trim();
@@ -63,7 +63,7 @@ export function parseMidpRows(rows,sheet){
  }
  return result;
 }
-export async function workbookSnapshot(env,key){const saved=await env.BUCKET.get('m1/workbooks/'+key);const data=saved?await saved.json():null;if(data?.rows&&['tidp','scope','tracker','midp'].includes(key))data.rows=data.rows.filter(inOwnerScope);return data;}
+export async function workbookSnapshot(env,key){const saved=await env.BUCKET.get('m1/workbooks/'+key);const data=saved?await saved.json():null;if(key==='tidp'&&data?.naming)data.naming=originalParcelRules(data.naming);if(data?.rows&&['tidp','scope','tracker','midp'].includes(key))data.rows=data.rows.filter(inOwnerScope);return data;}
 export function extractMidp(bytes){
  const names=read(bytes,{type:'array',bookSheets:true}).SheetNames.filter(n=>n!=='Index');if(names.length>80)throw Error('MIDP exceeds the sheet limit.');
  const rows=[],deliverables=[];
@@ -105,10 +105,11 @@ export async function syncWorkbook(env,key){
   const scopeSource=await workbookSnapshot(env,'scope');if(!scopeSource)throw Error('Read the scope register first.');
   const policy={...scopePolicy(scopeSource.rows,rows),source:scopeSource.source};policy.revision=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(policy.rows))))).map(n=>n.toString(16).padStart(2,'0')).join('').slice(0,16);await env.BUCKET.put('m1/scope',JSON.stringify(policy));result.rows=scopedMapping(policy);
   result.naming=parseNamingRules(utils.sheet_to_json(book.Sheets['Supporting Data'],{header:1,defval:null}));
-  for(const field of result.naming.fields){const known=new Set(field.values.map(v=>v.code));if(field.index===1&&!known.has('FXX')){field.values.push({code:'FXX',description:'Updated M1 naming appendix'});known.add('FXX');}
+  for(const field of result.naming.fields){const known=new Set(field.values.map(v=>v.code));
    if(field.index===2)for(const r of scopeSource.rows){const code=r.filename.split('-')[2];if(/^[A-Z0-9]+$/.test(code||'')&&!known.has(code)){field.values.push({code,description:'Scope register TIDP filename'});known.add(code);}}
-   for(const n of deliverySheets)for(const r of utils.sheet_to_json(book.Sheets[n]||{},{header:1,defval:null})){const name=text(r[0]);if(!/^M1-/i.test(name))continue;const code=name.split('-')[field.index];if(/^[A-Z0-9]+$/.test(code||'')&&!known.has(code)){field.values.push({code,description:'Current TIDP deliverable'});known.add(code);}}
+   for(const n of deliverySheets)for(const r of utils.sheet_to_json(book.Sheets[n]||{},{header:1,defval:null})){const name=text(r[0]);if(!/^M1-/i.test(name))continue;const code=name.split('-')[field.index];if(/^[A-Z0-9]+$/.test(code||'')&&!(field.index===1&&code==='FXX')&&!known.has(code)){field.values.push({code,description:'Current TIDP deliverable'});known.add(code);}}
   }
  }
+ if(key==='tidp')result.naming=originalParcelRules(result.naming);
  await env.BUCKET.put('m1/workbooks/'+key,JSON.stringify(result));return result;
 }
