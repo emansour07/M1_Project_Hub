@@ -55,6 +55,7 @@ def check_name(name,mapping,rules):
     return {'state':'warning' if issues else 'pass','issues':issues,'suggestion':'-'.join(fixed)+match.group() if issues and match and all(i['corrected'] for i in issues) else None}
 
 def crawl(client,scope):
+    from .received import reference_scoped
     files=[];seen=set();queue=[(key,folder,[]) for key,folder in {**ROOTS,'review':REVIEW,'reference':REFERENCE}.items()]
     while queue:
         key,folder,trail=queue.pop(0)
@@ -72,7 +73,7 @@ def crawl(client,scope):
             if item['type']!='items':continue
             detail=a.get('extension',{}).get('data',{})
             version=(item.get('_tip') or {}).get('attributes',{})
-            f=scoped({'id':item['id'],'name':name,'source':key,'folderId':folder,'folderPath':trail,
+            f=(reference_scoped if key=='reference' else scoped)({'id':item['id'],'name':name,'source':key,'folderId':folder,'folderPath':trail,
                 'description':detail.get('description') or '', 'descriptionRead':'description' in detail,
                 'version':version.get('versionNumber'),'updatedAt':version.get('lastModifiedTime') or a.get('lastModifiedTime')},scope)
             if f and (key!='review' or model(f)):files.append(f)

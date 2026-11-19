@@ -40,3 +40,13 @@ class ReceivedTests(TestCase):
             if matches:self.assertEqual(matches[0]['folderId'],'island')
             self.assertEqual(result['sourceCheckedAt'],123)
             self.assertEqual(Snapshot.objects.get(key='received-input').data,baseline)
+
+    def test_original_asset_resolution_excludes_a51_and_keeps_ambiguity(self):
+        from .received import resolve_rows,reference_scoped
+        scope=[{'id':'Mainland-WT1','code':'WT1','name':'Water Tank 1','zone':'Mainland','aliases':['WT1'],'ambiguous':[]}, {'id':'Island-DT1','code':'DT1','name':'Diesel','zone':'Island','aliases':['DT1','A51'],'ambiguous':[]}]
+        base={**self.row,'scopeId':'pending','assetAssignmentPending':True}
+        rows=[{**base,'name':'M1-FXX-SAP-MW1-05-BM010-BNM-XX-901001','source':'MIDP M1 - 121-ARX-WT1'}, {**base,'name':'M1-FXX-SAP-A51-05-BM100-BFM-XX-900020'}, {**base,'name':'M1-121-PAR-XXX-42-BM036-BNM-ZZ-901002','description':'Water station site works'}]
+        resolved=resolve_rows(rows,scope)
+        self.assertEqual(len(resolved),2);self.assertEqual(resolved[0]['scopeId'],'Mainland-WT1');self.assertTrue(resolved[1]['assetAssignmentPending'])
+        self.assertIsNone(reference_scoped({**rows[1],'name':rows[1]['name']+'.rvt'},scope))
+        self.assertEqual(reference_scoped({**rows[0],'name':rows[0]['name']+'.rvt'},scope)['scopeId'],'Mainland-WT1')

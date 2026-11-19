@@ -1,3 +1,4 @@
+import {referenceScopedFile} from './received.mjs';
 import {getScope,scopedFile,visitScopeFolder} from './scope.mjs';
 import {formatState,formatSnapshot,syncFormats} from './format-audit.mjs';
 import {accessToken,getAPS} from './forma.mjs';
@@ -22,7 +23,7 @@ export async function progressSnapshot(env){
  const s=await state(env);if(!s.published)return {scan:null,checking:{active:!!s.active,failed:!!s.error}};
  init(env.SQL);const files=env.SQL.exec('SELECT body FROM progress_files WHERE generation=?',s.published).toArray().map(r=>JSON.parse(r.body));
  const mapping=await workbookSnapshot(env,'tidp'),tracker=await workbookSnapshot(env,'tracker'),midp=await workbookSnapshot(env,'midp');
- const policy=await getScope(env),audit=await formatSnapshot(env),combined=(audit?[...files.filter(f=>f.source==='reference'),...audit.files]:files).map(f=>scopedFile(f,policy)).filter(Boolean);
+ const policy=await getScope(env),audit=await formatSnapshot(env),combined=(audit?[...files.filter(f=>f.source==='reference'),...audit.files]:files).map(f=>f.source==='reference'?referenceScopedFile(f,policy):scopedFile(f,policy)).filter(Boolean);
  return {formatCheckedAt:audit?.checkedAt||null,scan:buildProgress(combined,mapping?.rows||[],tracker?.rows||[],s.checkedAt,Date.now(),midp?.rows||[]),mappingSource:mapping?.source||null,trackerSource:tracker?.source||null,baselineSource:midp?.source||null,checking:{active:!!s.active,failed:!!s.error}};
 }
 export async function syncProgress(env,manual=false,readApi=getAPS,getToken=accessToken,maxReads=18){
@@ -66,8 +67,8 @@ export async function syncProgress(env,manual=false,readApi=getAPS,getToken=acce
     }else if(item.type==='items'&&(task.source==='reference'?/\.(pdf|dwg|dgn|dxf|rvt|ifc|nwc|nwd|dwfx)$/i:/\.(rvt|dwg|ifc|nwc|nwd|dwfx)$/i).test(name)){
      const version=page.included?.find(v=>v.type==='versions'&&v.id===item.relationships?.tip?.data?.id);
      const f={id:item.id,name,source:task.source,folderId:task.folderId,folderPath:task.trail,version:version?.attributes?.versionNumber||null,updatedAt:version?.attributes?.lastModifiedTime||item.attributes?.lastModifiedTime||null};
-     if(!scopedFile(f,policy))continue;
-     sql.exec('INSERT INTO progress_files(generation,source,id,body) VALUES(?,?,?,?) ON CONFLICT(generation,source,id) DO UPDATE SET body=excluded.body',s.generation,task.source,item.id,JSON.stringify(scopedFile(f,policy)));
+     const scoped=task.source==='reference'?referenceScopedFile(f,policy):scopedFile(f,policy);if(!scoped)continue;
+     sql.exec('INSERT INTO progress_files(generation,source,id,body) VALUES(?,?,?,?) ON CONFLICT(generation,source,id) DO UPDATE SET body=excluded.body',s.generation,task.source,item.id,JSON.stringify(scoped));
     }
    }
    const next=nextPath(page.links?.next,task.path);
