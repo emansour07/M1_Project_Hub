@@ -27,7 +27,7 @@ export async function receivedSnapshot(env){
  const [data,policy,state]=await Promise.all([read(env,'m1/received'),getScope(env),read(env,'m1/progress/state')]);
  const rows=resolveReceivedRows(data?.rows||[],policy);
  const files=state?.published?env.SQL.exec('SELECT body FROM progress_files WHERE generation=? AND source=?',state.published,'reference').toArray().map(r=>referenceScopedFile(JSON.parse(r.body),policy)).filter(f=>f&&(f.areaWide||policy.rows.some(a=>a.id===f.scopeId))):[];
- return {sourceName:data?.sourceName||'M1_Models_Received.xlsx',sourceCheckedAt:data?.sourceCheckedAt||null,checkedAt:state?.checkedAt||null,checking:!!state?.active,rows:compareReceived(rows,files,state?.checkedAt)};
+ return {assignmentVersion:'2026-11-19-originals-v2',sourceEntries:data?.rows?.length||0,scopedEntries:rows.length,sourceName:data?.sourceName||'M1_Models_Received.xlsx',sourceCheckedAt:data?.sourceCheckedAt||null,checkedAt:state?.checkedAt||null,checking:!!state?.active,rows:compareReceived(rows,files,state?.checkedAt)};
 }
 
 export function resolveReceivedRows(rows,policy){
