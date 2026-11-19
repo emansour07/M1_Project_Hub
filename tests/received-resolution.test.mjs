@@ -15,9 +15,9 @@ test('resolve evidence-backed aliases and area descriptions without changing sou
  const result=resolveReceivedRows(rows,policy);assert.deepEqual(result.map(r=>r.scopeId),ids.slice(0,5));assert.deepEqual(result.map(r=>r.name),rows.map(r=>r.name));assert.ok(result.every(r=>!r.assetAssignmentPending));
  const f=referenceScopedFile({name:rows[0].name+'.rvt',folderPath:['Mainland']},policy);assert.equal(f.scopeId,'Mainland-WT1');
 });
-test('keep ambiguous station assignments unresolved and isolate the approved parcel federation',()=>{
+test('group confirmed P02 models once and keep water station pending with evidence',()=>{
  const rows=[make('M1-121-PAR-P02-42-BM012-BNM-ZZ-901001','Storm lifting station'),make('M1-121-PAR-XXX-42-BM036-BNM-ZZ-901002','Water station site works'),make('M1-102-HES-XXX-42-BM100-BFM-XX-900001','Parcel 10.2 Federated Model'),make('M1-102-SAP-MW1-05-BM010-BNM-XX-901001')];
- const result=resolveReceivedRows(rows,policy);assert.ok(result.filter((r,i)=>i!==2).every(r=>r.assetAssignmentPending));assert.equal(result[2].scopeId,'Island-wide');assert.equal(result[2].areaWide,true);assert.equal(receivedMatrix([result[2]]).cells.length,0);
+ const result=resolveReceivedRows(rows,policy);assert.ok(result.filter((r,i)=>i===1||i===3).every(r=>r.assetAssignmentPending));assert.equal(result[0].scopeId,'Mainland-SL1-SL2');assert.deepEqual(result[0].sharedAssets,['Mainland-SL1','Mainland-SL2']);assert.match(result[1].assignmentComment,/WATER PUMP STATION/);assert.equal(receivedMatrix([result[0]]).cells.length,0);assert.equal(result[2].scopeId,'Island-wide');assert.equal(result[2].areaWide,true);assert.equal(receivedMatrix([result[2]]).cells.length,0);
 });
 
 test('road alignments and traffic models remain distinct within the same asset',()=>{

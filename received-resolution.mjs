@@ -19,10 +19,12 @@ export function receiptHint(row){
 
 // Owner approved 19 Nov: keep this parcel federation separate from asset totals.
 export function coordinationAsset(row){
+ if(/^M1-121-PAR-P02-42-(?:BM012-B(?:NM\/BGM|NM|GM)-ZZ-901001|BM019-B(?:NM\/BGM|NM|GM)-ZZ-900001|BM036-B(?:NM\/BGM|NM|GM)-ZZ-901001)(?:-R\d+)?(?:\.(?:RVT|DWG|NWC|IFC|DWFX))?$/i.test(row.name||''))return {id:'Mainland-SL1-SL2',code:'SL1 + SL2',name:'SL1 + SL2 station complex',zone:'Mainland',sharedAssets:['Mainland-SL1','Mainland-SL2'],assignmentEvidence:'Owner-confirmed shared SL1 + SL2 group. Source IFC content spans the station complex; each model is counted once.'};
  const base=String(row.name||'').toUpperCase().replace(/\.(RVT|DWG|NWC|IFC|DWFX)$/,'').replace(/-R\d+$/,'');
  return base==='M1-102-HES-XXX-42-BM100-BFM-XX-900001'?{id:'Island-wide',code:'Island-wide',name:'Island-wide coordination',zone:'Island',areaWide:true,assignmentEvidence:'Parcel 10.2 federation; owner-confirmed area-wide classification'}:null;
 }
 
 export function receiptContentMetadata(row){
+ if(/^M1-121-PAR-XXX-42-BM036-B(?:NM\/BGM|NM|GM)-ZZ-901002(?:-|\.|$)/i.test(row.name||''))return {assignmentComment:'Asset confirmation required: the IFC building is named WATER PUMP STATION, but does not identify WP1, WT1 or WT2. The similarly numbered P01 model is a different file named MAINLAND CAMP. Kept pending at the owner’s request.'};
  return /^M1-102-HES-XXX-42-BM046-B(?:NM\/BGM|NM|GM)-MP-90100[012](?:-|\.|$)/i.test(row.name)?{discipline:'Sewage (Wet Utilities)',contentEvidence:'Source IFC project and building: Sewage P10.2 NEW; BM046 picklist conflicts with model content'}:{};
 }

@@ -29,6 +29,7 @@ def excluded(row):
     return str(row.get('name','')).upper().split('-')[3:4]==['A51'] or row.get('scopeId')=='Island-A51'
 
 def coordination_asset(row):
+    if re.fullmatch(r'M1-121-PAR-P02-42-(?:BM012-B(?:NM/BGM|NM|GM)-ZZ-901001|BM019-B(?:NM/BGM|NM|GM)-ZZ-900001|BM036-B(?:NM/BGM|NM|GM)-ZZ-901001)(?:-R\d+)?(?:\.(?:RVT|DWG|NWC|IFC|DWFX))?',str(row.get('name','')),re.I):return {'id':'Mainland-SL1-SL2','code':'SL1 + SL2','name':'SL1 + SL2 station complex','zone':'Mainland','sharedAssets':['Mainland-SL1','Mainland-SL2'],'assignmentEvidence':'Owner-confirmed shared SL1 + SL2 group. Source IFC content spans the station complex; each model is counted once.'}
     base=re.sub(r'-R\d+$','',re.sub(r'\.(RVT|DWG|NWC|IFC|DWFX)$','',str(row.get('name','')).upper()))
     return {'id':'Island-wide','code':'Island-wide','name':'Island-wide coordination','zone':'Island','areaWide':True} if base=='M1-102-HES-XXX-42-BM100-BFM-XX-900001' else None
 
@@ -72,7 +73,7 @@ def validate(data,scope):
         pending=not a and data.get('scopeReviewed') is True and r.get('assetAssignmentPending') is True and r['scopeId']=='pending'
         if pending:a={'id':'pending','code':'Unassigned','name':'Asset assignment pending','zone':'Area to confirm'}
         if not a or (a['id']!=r['scopeId'] and not (data.get('scopeReviewed') and r.get('assetAssignmentPending') and r['scopeId']=='pending')):continue
-        rows.append({**{k:r[k] for k in ['id','name','description','source','discipline','revision','scopeId']},'scopeId':a['id'],'asset':a.get('proposed') or a['code'],'assetName':a['name'],'zone':a['zone'],'assetAssignmentPending':pending,'areaWide':a.get('areaWide',False),
+        rows.append({**{k:r[k] for k in ['id','name','description','source','discipline','revision','scopeId']},'scopeId':a['id'],'asset':a.get('proposed') or a['code'],'assetName':a['name'],'zone':a['zone'],'assetAssignmentPending':pending,'areaWide':a.get('areaWide',False),'sharedAssets':a.get('sharedAssets',[]),
             'formats':{f:{'sourceAvailable':r.get('formats',{}).get(f,{}).get('sourceAvailable') is True,'workbookReceived':r.get('formats',{}).get(f,{}).get('workbookReceived') is True} for f in FORMATS}})
     if not rows:raise ValueError('No confirmed scoped models were found.')
     return {'sourceName':'M1_Models_Received.xlsx','sourceCheckedAt':data['sourceCheckedAt'],'importedAt':int(time.time()*1000),'rows':rows}
@@ -103,16 +104,17 @@ def resolve_rows(rows,scope):
     for r in rows:
         if excluded(r):continue
         if re.match(r'^M1-102-HES-XXX-42-BM046-B(?:NM/BGM|NM|GM)-MP-90100[012](?:-|\.|$)',r['name'],re.I):r={**r,'discipline':'Sewage (Wet Utilities)','contentEvidence':'Source IFC project and building: Sewage P10.2 NEW; BM046 picklist conflicts with model content'}
+        if re.match(r'^M1-121-PAR-XXX-42-BM036-B(?:NM/BGM|NM|GM)-ZZ-901002(?:-|\.|$)',r['name'],re.I):r={**r,'assignmentComment':'Asset confirmation required: the IFC building is named WATER PUMP STATION, but does not identify WP1, WT1 or WT2. The similarly numbered P01 model is a different file named MAINLAND CAMP. Kept pending at the owner’s request.'}
         a=asset(r,scope)
         if r.get('assetAssignmentPending') and a:
-            result.append({**r,'scopeId':a['id'],'asset':a.get('proposed') if a.get('proposed') not in [None,'XXX','YYY','ZZZ'] else a['code'],'assetName':a['name'],'zone':a['zone'],'assetAssignmentPending':False,'areaWide':a.get('areaWide',False),'assignmentEvidence':'Original code, source TIDP and model description'})
+            result.append({**r,'scopeId':a['id'],'asset':a.get('proposed') if a.get('proposed') not in [None,'XXX','YYY','ZZZ'] else a['code'],'assetName':a['name'],'zone':a['zone'],'assetAssignmentPending':False,'areaWide':a.get('areaWide',False),'sharedAssets':a.get('sharedAssets',[]),'assignmentEvidence':a.get('assignmentEvidence','Original code, source TIDP and model description')})
         elif r.get('assetAssignmentPending') or (a or {}).get('id')==r['scopeId']:result.append(r)
     return result
 
 def reference_scoped(file,scope):
     if excluded(file):return None
     a=asset({**file,'source':' / '.join(file.get('folderPath',[])),'description':file.get('description','')},scope)
-    return {**file,'scopeId':a['id'],'scopeAsset':a.get('proposed') or a['code'],'scopeName':a['name'],'areaWide':a.get('areaWide',False)} if a else scoped(file,scope)
+    return {**file,'scopeId':a['id'],'scopeAsset':a.get('proposed') or a['code'],'scopeName':a['name'],'areaWide':a.get('areaWide',False),'sharedAssets':a.get('sharedAssets',[])} if a else scoped(file,scope)
 
 def retain_reference(files,scope,now):
     """Retain only reference models needed by the imported scoped expectations."""

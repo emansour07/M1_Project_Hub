@@ -1,7 +1,7 @@
 export const RECEIVED_FORMATS=['native','nwc','ifc','dwfx'];
 export function receivedMatrix(rows){
  const groups=new Map();let pending=0;
- for(const r of rows){if(r.areaWide)continue;if(r.assetAssignmentPending){pending++;continue;}const key=JSON.stringify([r.scopeId,r.discipline]);
+ for(const r of rows){if(r.areaWide||r.sharedAssets?.length)continue;if(r.assetAssignmentPending){pending++;continue;}const key=JSON.stringify([r.scopeId,r.discipline]);
   if(!groups.has(key))groups.set(key,{key,scopeId:r.scopeId,asset:r.asset,assetName:r.assetName,zone:r.zone,discipline:r.discipline,rows:[],expected:0,received:0,complete:0,missingModels:0,missingFormats:0,unassessed:0});
   const g=groups.get(key);g.rows.push(r);g.expected++;if(r.accFormats===null||r.status==='Not checked'){g.unassessed++;continue;}
   if(r.accFormats>0)g.received++;else g.missingModels++;

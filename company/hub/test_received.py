@@ -50,3 +50,15 @@ class ReceivedTests(TestCase):
         self.assertEqual(len(resolved),2);self.assertEqual(resolved[0]['scopeId'],'Mainland-WT1');self.assertTrue(resolved[1]['assetAssignmentPending'])
         self.assertIsNone(reference_scoped({**rows[1],'name':rows[1]['name']+'.rvt'},scope))
         self.assertEqual(reference_scoped({**rows[0],'name':rows[0]['name']+'.rvt'},scope)['scopeId'],'Mainland-WT1')
+        self.assertIn('WATER PUMP STATION',resolved[1]['assignmentComment'])
+
+    def test_shared_station_models_keep_separate_identities_and_match_formats(self):
+        from .received import resolve_rows,reference_scoped
+        names=['M1-121-PAR-P02-42-BM012-BNM/BGM-ZZ-901001','M1-121-PAR-P02-42-BM019-BNM/BGM-ZZ-900001','M1-121-PAR-P02-42-BM036-BNM/BGM-ZZ-901001']
+        rows=resolve_rows([{**self.row,'id':str(i),'name':n,'scopeId':'pending','assetAssignmentPending':True} for i,n in enumerate(names)],[])
+        self.assertEqual(len({model_key(r['name'],r['scopeId']) for r in rows}),3)
+        for r in rows:
+            self.assertEqual(r['sharedAssets'],['Mainland-SL1','Mainland-SL2'])
+            self.assertFalse(r['assetAssignmentPending'])
+            f=reference_scoped({'name':r['name'].replace('BNM/BGM','BGM')+'-R01.ifc'},[])
+            self.assertEqual(model_key(f['name'],f['scopeId']),model_key(r['name'],r['scopeId']))
