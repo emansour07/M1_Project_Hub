@@ -1,3 +1,4 @@
+import {illustrateReviewGuide} from './review-illustration.mjs';
 // Refined from ACC_Review_Workflow_M1.docx. NWC and the MACE publication gate
 // were explicitly confirmed by the project owner on 19 November 2026.
 export function installReviewGuide(H){
@@ -19,6 +20,6 @@ export function installReviewGuide(H){
  const edit=duties.querySelector('.page-heading a');if(edit)edit.textContent='Edit team instructions';
  const activate=show=>{guide.hidden=!show;actions.hidden=show;if(edit)edit.hidden=show;for(const [id,on] of [['duties-guide-tab',show],['duties-sharing-tab',!show]]){const b=document.getElementById(id);b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}};
  document.getElementById('duties-guide-tab').onclick=()=>activate(true);document.getElementById('duties-sharing-tab').onclick=()=>activate(false);nav.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const show=e.key==='Home'?true:e.key==='End'?false:guide.hidden;activate(show);document.getElementById(show?'duties-guide-tab':'duties-sharing-tab').focus();}};
- document.getElementById('review-checklist-reset').onclick=()=>guide.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);activate(true);
+ document.getElementById('review-checklist-reset').onclick=()=>guide.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);illustrateReviewGuide(guide,H.config);activate(true);
  actions.insertAdjacentHTML('afterbegin','<section class="panel"><h2>Update your team’s models</h2><p>Use your assigned-model form to report progress. The owner reviews tracker drafts before Excel publication.</p><a class="button" href="'+H.config.apiOrigin+'/progress-update" target="_blank" rel="noopener">Update progress</a> <a class="button" href="'+H.config.apiOrigin+'/admin/progress-requests" target="_blank" rel="noopener">Manage team requests</a></section>');
 }
