@@ -5,7 +5,7 @@ let H;
 const palette=['#178b82','#d89831','#647bc0','#aa6eb5','#528cac','#b76b59','#7c9561'];
 const stageColour=code=>({'05':'#178b82','22':'#d89831','32':'#647bc0','42':'#aa6eb5','21':'#b76b59','31':'#528cac','41':'#7c9561'}[code]||'#8d939b');
 export function readMidpSelection(key){return [...$('midp-'+key).selectedOptions].map(o=>o.value).filter(Boolean);}
-export function setMidpSelection(key,value){const values=selectedValues(value);for(const o of $('midp-'+key).options)o.selected=values.includes(o.value);}
+export function setMidpSelection(key,value){const values=selectedValues(value),select=$('midp-'+key);for(const value of values)if(![...select.options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;select.append(o);}for(const o of select.options)o.selected=values.includes(o.value);}
 export function paintMidpFilter(key,values,current,label){
  const select=$('midp-'+key),chosen=selectedValues(current),all=[...new Set([...values,...chosen])];
  select.innerHTML=all.map(value=>'<option value="'+H.esc(value)+'"'+(chosen.includes(value)?' selected':'')+'>'+H.esc(label(value))+'</option>').join('');
