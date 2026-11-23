@@ -146,3 +146,11 @@ class MidpMetadataTests(TestCase):
         self.assertEqual(result[0]['name'],rows[0]['name']);self.assertTrue(result[0]['parcelNeedsCorrection'])
         self.assertEqual(result[1]['actualParcel'],'Unconfirmed')
         self.assertEqual(len(filter_rows(result,{'parcel':'102','actualOriginator':'ARX EGY','originator':'SAP'})),1)
+        self.assertEqual([r['scopeResponsibility'] for r in result],['ARX','ATM'])
+
+    def test_multi_select_stage_export_filters_preserve_deliverables(self):
+        from .exports import filter_rows
+        rows=[{'projectStage':'5','discipline':'ARCH','scopeResponsibility':'ARX','plannedDate':'2026-11-19'}, {'projectStage':'05','discipline':'MECH','scopeResponsibility':'ARX'}, {'projectStage':'42','discipline':'ARCH','scopeResponsibility':'ATM'}]
+        self.assertEqual(len(filter_rows(rows,{'stage':'["05","42"]','discipline':'["ARCH","MECH"]'})),3)
+        self.assertEqual(len(filter_rows(rows,{'stage':'["05","42"]','responsibility':'["ATM"]'})),1)
+        self.assertEqual(len(filter_rows(rows,{'stage':'[]','plannedStatus':'["with","without"]'})),3)

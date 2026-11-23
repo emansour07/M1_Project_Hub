@@ -1,3 +1,4 @@
+import json
 import io
 import re
 import zipfile
@@ -7,19 +8,29 @@ from .workbooks import iso
 
 def attrs(tag): return {k:html.unescape(v) for k,v in re.findall(r'([\w:]+)="([^"]*)"',tag)}
 
+def selected_values(value):
+    if isinstance(value,list):return [v for v in value if isinstance(v,str) and v]
+    if not value:return []
+    if isinstance(value,str) and value.startswith('['):
+        try:
+            parsed=json.loads(value)
+            if isinstance(parsed,list):return [v for v in parsed if isinstance(v,str) and v]
+        except ValueError:pass
+    return [str(value)]
+
 def filter_rows(entries,filters):
+    def matches(key,values):
+        selected=selected_values(filters.get(key))
+        return not selected or any(v in selected for v in values)
     out=[]
     for r in entries:
-        if filters.get('plannedStatus')=='with' and not r.get('plannedDate'):continue
-        if filters.get('plannedStatus')=='without' and r.get('plannedDate'):continue
         parts=str(r.get('name') or '').split('-')
         parcel=r.get('actualParcel') or (parts[1].strip().upper() if len(parts)>1 else '') or 'Not provided'
-        if filters.get('parcel') and parcel!=filters['parcel']:continue
-        if any(filters.get(k) and ((r.get(f) or 'Unclassified') if k=='discipline' else r.get(f))!=filters[k] for k,f in [('asset','scopeId'),('discipline','discipline'),('originator','originator'),('actualOriginator','actualOriginator'),('category','category')]):continue
-        if filters.get('format') and filters['format'] not in r.get('formats',[]):continue
-        if filters.get('approval'):
-            if filters['approval']=='<blank>' and r.get('approvalStatus'):continue
-            if filters['approval']!='<blank>' and r.get('approvalStatus')!=filters['approval']:continue
+        stage=str(r.get('projectStage') or (parts[4] if len(parts)>4 else '') or 'Not provided').strip().upper()
+        if re.fullmatch(r'\d{1,2}',stage):stage=stage.zfill(2)
+        values={'parcel':[parcel],'stage':[stage],'responsibility':[r.get('scopeResponsibility','ARX')],'plannedStatus':['with' if r.get('plannedDate') else 'without'],'format':r.get('formats',[]),'approval':[r.get('approvalStatus') or '<blank>']}
+        values.update({k:[r.get(f) or ('Unclassified' if k=='discipline' else '')] for k,f in [('asset','scopeId'),('discipline','discipline'),('originator','originator'),('actualOriginator','actualOriginator'),('category','category')]})
+        if any(not matches(k,v) for k,v in values.items()):continue
         if filters.get('q') and filters['q'].lower() not in ' '.join(str(r.get(k,'')) for k in ['name','description','scopeName','scopeAsset','discipline']).lower():continue
         out.append(r)
     return out

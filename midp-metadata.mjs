@@ -7,6 +7,6 @@ export function enrichMidpEntries(entries,scope,settings){
   const actualParcel=scopeParcel||(['102','121'].includes(written)?written:'Unconfirmed');
   const parcelEvidence=scopeParcel?'Scoped asset: '+asset.code+' · '+zone:actualParcel!=='Unconfirmed'?'Document number':'No confirmed parcel code in the asset reference';
   const company=asset?companyForAsset(asset,settings):null;
-  return {...row,actualParcel,parcelLabel:parcelNames[actualParcel]||(zone?zone+' — parcel unconfirmed':'Parcel unconfirmed'),writtenParcel:written||'Not provided',parcelEvidence,parcelNeedsCorrection:!!scopeParcel&&written!==scopeParcel,actualOriginator:company?.party||'Not assigned',actualOriginatorColor:company?.color||null};
+  return {...row,scopeResponsibility:(company?.appendixParty||asset?.appendixParty||asset?.party)==='ATM'?'ATM':'ARX',actualParcel,parcelLabel:parcelNames[actualParcel]||(zone?zone+' — parcel unconfirmed':'Parcel unconfirmed'),writtenParcel:written||'Not provided',parcelEvidence,parcelNeedsCorrection:!!scopeParcel&&written!==scopeParcel,actualOriginator:company?.party||'Not assigned',actualOriginatorColor:company?.color||null};
  });
 }
