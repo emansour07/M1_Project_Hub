@@ -88,7 +88,8 @@ def snapshot(req, key):
     data=s.data
     if key=='midp':
         from .midp_metadata import enrich_entries
-        data={**data,'entries':enrich_entries(data.get('entries',[]))}
+        from .submissions import attach
+        data=attach({**data,'entries':enrich_entries(data.get('entries',[]))})
     return JsonResponse(data)
 
 @require_GET

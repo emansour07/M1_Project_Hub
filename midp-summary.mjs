@@ -2,10 +2,10 @@ import {deliverableStage} from './delivery-core.mjs';
 const validDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
 export function deliverySummary(rows,asOf=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())){
  const counts=key=>Object.entries(rows.reduce((out,r)=>{const v=key(r);out[v]=(out[v]||0)+1;return out;},{})).map(([name,qty])=>({name,qty}));
- const daily=new Map();let planned=0,actual=0;
- for(const r of rows)for(const [field,key] of [['plannedDate','planned'],['latestIssueDate','actual']])if(validDate(r[field])&&(key!=='actual'||r[field]<=asOf)){const d=r[field];if(!daily.has(d))daily.set(d,{date:d,planned:0,actual:0});daily.get(d)[key]++;if(key==='planned')planned++;else actual++;}
- let p=0,f=0;const curve=[...daily.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(d=>({...d,plannedTotal:p+=d.planned,actualTotal:f+=d.actual}));
- return {total:rows.length,planned,actual,undated:rows.length-planned,curve,stages:counts(deliverableStage).sort((a,b)=>a.name.localeCompare(b.name)),disciplines:counts(r=>r.discipline||'Unclassified').sort((a,b)=>b.qty-a.qty),responsibility:counts(r=>r.scopeResponsibility||'ARX')};
+ const daily=new Map();let planned=0,actual=0,arxSapac=0,sapacMace=0;
+ for(const r of rows)for(const [field,key] of [['plannedDate','planned'],['arxSapacDate','arxSapac'],['sapacMaceDate','sapacMace']])if(validDate(r[field])&&(key==='planned'||r[field]<=asOf)){const d=r[field];if(!daily.has(d))daily.set(d,{date:d,planned:0,actual:0,arxSapac:0,sapacMace:0});daily.get(d)[key]++;if(key==='planned')planned++;else if(key==='actual')actual++;else if(key==='arxSapac')arxSapac++;else sapacMace++;}
+ let p=0,f=0,a=0,m=0;const curve=[...daily.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(d=>({...d,plannedTotal:p+=d.planned,actualTotal:f+=d.actual,arxSapacTotal:a+=d.arxSapac,sapacMaceTotal:m+=d.sapacMace}));
+ return {total:rows.length,planned,actual,arxSapac,sapacMace,undated:rows.length-planned,curve,stages:counts(deliverableStage).sort((a,b)=>a.name.localeCompare(b.name)),disciplines:counts(r=>r.discipline||'Unclassified').sort((a,b)=>b.qty-a.qty),responsibility:counts(r=>r.scopeResponsibility||'ARX')};
 }
 
 // Smooth monotone segments through recorded totals; control points never overshoot.

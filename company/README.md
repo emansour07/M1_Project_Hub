@@ -8,6 +8,8 @@ The current GitHub/Cloudflare dashboard has **not** been replaced or deployed fr
 
 ## Implemented
 
+- Owner submission-log imports at `/admin/submissions`, with separate ARX → SAPAC and SAPAC → MACE sources. XLSX/CSV preview, explicit column/date mapping, void exclusion, unique document matching, conflict checks and full-log replacement. The MIDP curve uses Planned, latest SAPAC submission and latest MACE submission; numbered earlier submissions appear in details and the submission CSV. Internal review-start dates remain in details. Upload the complete history each time; missing records are removed from that stage. Ambiguous MIDP numbers are excluded until corrected in the TIDPs. The company database stores these logs as `submissions/arxSapac` and `submissions/sapacMace` snapshots; include these records in the cutover migration and normal backups. No new credentials or external-hub integration are required.
+
 - Internal Requirements Register: assigned discipline/asset collaboration, structured information requirements, comments and revision history, conflict checks, copying and filtered CSV export. The project coordinator can organise and contribute without an approval gate. Subcontractor submissions are deferred. Cloudflare and Django use the same schema/UI; runtime records require a separate controlled migration at cutover.
 
 - MIDP category, asset, discipline, originator, format, approval and inclusive **Planned date** filters. Planned/Forecast are read by header. No fallback to exchange Issue Date. Filtered Excel preserves retained rows, cell styles and worksheet layout; excluded deliverable rows and sheets are removed from the export.

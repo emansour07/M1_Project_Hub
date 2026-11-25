@@ -1,3 +1,4 @@
+import submissionsHtml from './submissions.html';
 import progressFormHtml from '../company/hub/templates/hub/progress_form.html';
 import progressRequestsHtml from '../company/hub/templates/hub/progress_requests.html';
 import {progressMailTick} from '../progress-requests.mjs';
@@ -16,7 +17,7 @@ import adminHtml from './admin.html';
 import requirementsHtml from '../company/hub/templates/hub/requirements.html';
 import companyEditorHtml from '../company/hub/templates/hub/company_editor.html';
 import operationsHtml from './operations.html';
-const templates={progressFormHtml,progressRequestsHtml,assuranceImportHtml,receivedImportHtml,companyEditorHtml,operationsHtml,adminHtml,trackerEditorHtml,contentEditorHtml,remindersHtml,requirementsHtml};
+const templates={submissionsHtml,progressFormHtml,progressRequestsHtml,assuranceImportHtml,receivedImportHtml,companyEditorHtml,operationsHtml,adminHtml,trackerEditorHtml,contentEditorHtml,remindersHtml,requirementsHtml};
 export class M1State extends DurableObject {
  constructor(ctx,env){super(ctx,env);this.storage=ctx.storage;this.application=new M1Application(ctx.storage,env,templates);}
  fetch(request){return this.application.fetch(request);}

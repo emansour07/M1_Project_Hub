@@ -1,3 +1,4 @@
+import {submissionsRoute,withSubmissionLogs} from './submissions.mjs';
 import {assuranceRoute} from './assurance.mjs';
 import {receivedSnapshot,validateReceived} from './received.mjs';
 import {syncNextWorkbook} from './workbook-schedule.mjs';
@@ -116,6 +117,7 @@ export class M1Application {
    try{const data=validateReceived(await limitedJson(request,1500000),await getScope(env));await env.BUCKET.put('m1/received',JSON.stringify(data));return json({saved:true,count:data.rows.length});}catch(e){return json({error:e.message},400);}
   }
 
+  const submissions=await submissionsRoute(this,request,owner);if(submissions)return submissions;
   const assurance=await assuranceRoute(this,request,owner);if(assurance)return assurance;
 
   const operations=await operationsRoute(this,request,owner);if(operations)return operations;
@@ -231,7 +233,7 @@ export class M1Application {
 
   if(path==='/api/knowledge'&&request.method==='GET')return json({mapping:await getScope(env)?await workbookSnapshot(env,'tidp'):null,scope:await getScope(env)});
 
-  if(path==='/api/midp'&&request.method==='GET')return json(await midpSnapshot(env)||{entries:[],total:0,dated:0,source:null});
+  if(path==='/api/midp'&&request.method==='GET')return json(await withSubmissionLogs(env,await midpSnapshot(env)||{entries:[],total:0,dated:0,source:null}));
 
   if(path==='/api/midp/export'&&request.method==='GET'){
 
