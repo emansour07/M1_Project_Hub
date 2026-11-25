@@ -14,9 +14,67 @@ from openpyxl import load_workbook
 from .models import Snapshot
 
 STAGES={'arxSapac':'ARX → SAPAC','sapacMace':'SAPAC → MACE'}
-FIELDS='name date reference status workflowStatus revision'.split()
+FIELDS='name title date reference status workflowStatus revision'.split()
 def text(v):return '' if v is None else str(v).strip()
-def key(v):return re.sub(r'[-_]R\d{1,3}$','',re.sub(r'\.(PDF|RVT|IFC|NWC|NWD|DWFX|DWG|DXF|DGN|DOCX?|XLSX?)$','',re.split(r'[/\\]',text(v))[-1].upper()))
+def numbers(v):
+    s=re.sub(r'\s*-\s*','-',re.sub('[–—−]','-',text(v).upper()))
+    return list(dict.fromkeys(re.findall(r'(?:^|[^A-Z0-9])((?:M1-)(?:[A-Z0-9]+-){7}\d{6})(?![A-Z0-9])',s)))
+
+def key(v):
+    ns=numbers(v)
+    return ns[0] if len(ns)==1 else re.sub(r'[-_]R\d{1,3}$','',re.sub(r'\.(PDF|RVT|IFC|NWC|NWD|DWFX|DWG|DXF|DGN|DOCX?|XLSX?)$','',re.split(r'[/\\]',text(v))[-1].upper()))
+
+def mappings(value=None):
+    value=[] if value is None else value
+    if not isinstance(value,list) or len(value)>2000:raise ValueError('Use at most 2,000 saved document matches.')
+    seen=set();out=[]
+    for r in value:
+        if not isinstance(r,dict):raise ValueError('Invalid saved match.')
+        source=key(r.get('source'));target=key(r.get('target'))
+        if not source or not target or len(source)>500 or len(target)>500 or len(numbers(r.get('source')))>1 or len(numbers(r.get('target')))>1 or source in seen:raise ValueError('Each saved match needs one distinct source and one target document number.')
+        seen.add(source);out.append(dict(source=source,target=target))
+    return out
+
+def identity_keys(v,scope):
+    ns=numbers(v)
+    if not ns:return [key(v)]
+    out=[]
+    for n in ns:
+        p=n.split('-');assets=[a for a in scope if p[3] in a.get('aliases',[a.get('code'),a.get('proposed')]) and (p[1] in ['FXX','XXX','YYY','ZZZ'] or a.get('parcel')==p[1])]
+        if len(assets)>1:continue
+        if len(assets)==1:p[1]=assets[0]['parcel'];p[3]='@'+assets[0]['id']
+        if p[2]=='ARX':p[2]='SAP'
+        out.append('-'.join(p))
+    return out
+
+def resolver(entries,scope):
+    exact={};aliases={};loose={}
+    def add(index,k,e):
+        values=index.setdefault(k,[])
+        if not any(c['id']==e['id'] for c in values):values.append(e)
+    for e in entries:
+        for k in numbers(e['name']) or [key(e['name'])]:add(exact,k,e)
+        for k in identity_keys(e['name'],scope):
+            add(aliases,k,e);p=k.split('-')
+            if p[0]=='M1':p[1]='*';add(loose,'-'.join(p),e)
+    def resolve(value):
+        found={}
+        for k in numbers(value) or [key(value)]:
+            candidates=exact.get(k,[]);reason='Document number'
+            if not candidates:
+                canonical=identity_keys(k,scope);candidates=[e for x in canonical for e in aliases.get(x,[])];reason='Known code aliases'
+                if not candidates and len(k.split('-'))>1 and k.split('-')[1]=='FXX':
+                    candidates=[e for x in canonical for e in loose.get('-'.join([x.split('-')[0],'*',*x.split('-')[2:]]),[])];reason='Previous parcel code'
+                if not candidates and len(k.split('-'))>1:
+                    candidates=[e for x in canonical for e in loose.get('-'.join([x.split('-')[0],'*',*x.split('-')[2:]]),[]) if len(key(e['name']).split('-'))>1 and key(e['name']).split('-')[1]=='FXX' and (not e.get('actualParcel') or e['actualParcel']==k.split('-')[1])];reason='Previous MIDP parcel code'
+            for e in candidates:found[e['id']]={**e,'matchReason':reason}
+        return list(found.values())
+    return resolve
+
+def scope_rows():
+    record=Snapshot.objects.filter(key='knowledge').first()
+    return (record.data.get('scope') or {}).get('rows',[]) if record else []
+
 def day(v):
     if v is None or v=='':return None
     try:return date.fromisoformat(str(v)).isoformat()
@@ -33,21 +91,21 @@ def validate(data):
         if re.search(r'\bVOID(?:ED)?\b',r['workflowStatus'],re.I):void+=1;continue
         if not r['date']:missing+=1
         elif r['date']>asof:raise ValueError('Submission date is after the log date: '+r['name'])
-        identity=tuple(r[k].upper() if k=='name' else r[k] for k in ['name','date','reference','revision','status','workflowStatus'])
+        identity=tuple(r[k].upper() if k=='name' else r[k] for k in ['name','date','reference','revision','status','workflowStatus','title'])
         if identity in seen:duplicate+=1;continue
         seen.add(identity);rows.append(r)
     if not rows:raise ValueError('No non-void documents found. The saved log is unchanged.')
-    result=dict(stage=data['stage'],source=source,asOf=asof,basis='latest',rows=rows,voidCount=void,duplicateCount=duplicate,missingDates=missing)
+    result=dict(stage=data['stage'],source=source,asOf=asof,basis='latest',rows=rows,mappings=mappings(data.get('mappings')),voidCount=void,duplicateCount=duplicate,missingDates=missing)
     if len(json.dumps(result,ensure_ascii=False,separators=(',',':')).encode())>1700000:raise ValueError('The normalized log exceeds 1.7 MB.')
     return result
-def match(entries,report):
-    index={};groups={};unmatched=[];ambiguous=[]
-    for e in entries:index.setdefault(key(e['name']),[]).append(e)
+def match(entries,report,scope=None):
+    resolve=resolver(entries,scope or []);rules={r['source']:r['target'] for r in report.get('mappings',[])};groups={};unmatched=[];ambiguous=[]
     for r in report.get('rows',[]):
-        found=index.get(key(r['name']),[])
-        if not found:unmatched.append(r);continue
-        if len(found)!=1:ambiguous.append({**r,'candidates':[{k:c.get(k) for k in ['id','name','sheet','row','discipline']}|{'asset':c.get('scopeId')} for c in found]});continue
-        groups.setdefault(found[0]['id'],[]).append(r)
+        override=rules.get(key(r['name']))
+        found=resolve(override) if override else list({e['id']:e for v in [r['name'],r.get('title','')] if v for e in resolve(v)}.values())
+        if not found:unmatched.append({**r,'reason':'Saved target no longer matches the MIDP' if override else 'No matching document number in the current MIDP'});continue
+        if len(found)!=1:ambiguous.append({**r,'reason':'More than one MIDP deliverable matches','candidates':[{k:c.get(k) for k in ['id','name','sheet','row','discipline']}|{'asset':c.get('scopeId')} for c in found]});continue
+        groups.setdefault(found[0]['id'],[]).append({**r,'matchReason':'Owner-saved match' if override else found[0]['matchReason']})
     byid={}
     for ident,rows in groups.items():
         dates=sorted(r['date'] for r in rows if r.get('date'));last=dates[-1] if dates else None;latest=[r for r in rows if r.get('date')==last];events={}
@@ -56,16 +114,16 @@ def match(entries,report):
             e=events.setdefault((r['date'],r.get('reference') or r.get('revision')),dict(date=r['date'],reference=r.get('reference',''),revisions=[],statuses=[]))
             for singular,plural in [('revision','revisions'),('status','statuses')]:
                 if r.get(singular) and r[singular] not in e[plural]:e[plural].append(r[singular])
-        byid[ident]=dict(first=dates[0] if dates else None,latest=last,date=last,status=' / '.join(dict.fromkeys(r['status'] for r in latest if r.get('status'))),references=', '.join(dict.fromkeys(r['reference'] for r in latest if r.get('reference'))),history=sorted(events.values(),key=lambda r:(r['date'],r['reference'])),entries=len(rows))
+        byid[ident]=dict(matchReasons=list(dict.fromkeys(r['matchReason'] for r in rows)),sourceNames=list(dict.fromkeys(r['name'] for r in rows)),first=dates[0] if dates else None,latest=last,date=last,status=' / '.join(dict.fromkeys(r['status'] for r in latest if r.get('status'))),references=', '.join(dict.fromkeys(r['reference'] for r in latest if r.get('reference'))),history=sorted(events.values(),key=lambda r:(r['date'],r['reference'])),entries=len(rows))
     return dict(byId=byid,matched=len(byid),unmatched=unmatched,ambiguous=ambiguous)
 def reports():return [s.data for s in Snapshot.objects.filter(key__in=['submissions/'+k for k in STAGES]).order_by('key') if s.data.get('stage') in STAGES]
 def attach(snapshot):
-    entries=snapshot.get('entries',[]);joined=[(r,match(entries,r)) for r in reports()];internal=Snapshot.objects.filter(key='snapshot').first();reviews=(internal.data.get('current') or internal.data).get('reviews',[]) if internal else [];internalrows=[]
+    entries=snapshot.get('entries',[]);scope=scope_rows();joined=[(r,match(entries,r,scope)) for r in reports()];internal=Snapshot.objects.filter(key='snapshot').first();reviews=(internal.data.get('current') or internal.data).get('reviews',[]) if internal else [];internalrows=[]
     for r in reviews:
         if re.search(r'\bVOID(?:ED)?\b',r.get('status',''),re.I):continue
         created=r.get('created');created=datetime.fromtimestamp(created/1000,timezone(timedelta(hours=3))).date().isoformat() if isinstance(created,(int,float)) else None
         internalrows.extend(dict(name=f['name'],date=created,reference=r['id'],revision=f.get('version',''),status=f.get('status','')) for f in r.get('files',[]))
-    internalmatch=match(entries,{'rows':internalrows})['byId'];out=[]
+    internalmatch=match(entries,{'rows':internalrows},scope)['byId'];out=[]
     for e in entries:
         submissions={r['stage']:m['byId'][e['id']] for r,m in joined if e['id'] in m['byId']}
         out.append({**e,'submissions':submissions,'internalSubmission':internalmatch.get(e['id']),**{k+'Date':v['date'] for k,v in submissions.items()}})
@@ -76,6 +134,10 @@ def workspace(req):return render(req,'hub/submissions.html') if req.user.is_auth
 def api(req,action):
     if not(req.user.is_authenticated and req.user.is_superuser):return JsonResponse({'error':'Owner access required.'},status=403)
     if action=='workspace' and req.method=='GET':return JsonResponse({'stages':STAGES,'reports':[{**{k:v for k,v in r.items() if k!='rows'},'count':len(r['rows'])} for r in reports()]})
+    if action=='search' and req.method=='GET':
+        midp=Snapshot.objects.filter(key='midp').first();words=text(req.GET.get('q')).upper().split();es=midp.data.get('entries',[]) if midp else []
+        found=[e for e in es if words and all(w in ' '.join(text(e.get(k)) for k in ['name','description','scopeId','discipline']).upper() for w in words)][:40]
+        return JsonResponse({'entries':[{k:e.get(k) for k in ['name','description','discipline']}|{'asset':e.get('scopeId')} for e in found]})
     if req.method!='POST':return JsonResponse({'error':'Method not allowed.'},status=405)
     try:
         if len(req.body)>4000000:raise ValueError('Use a file smaller than 4 MB.')
@@ -88,12 +150,12 @@ def api(req,action):
                 sheets=[{'name':s.title,'rows':[[v.isoformat()[:10] if isinstance(v,(date,datetime)) else v if v is not None else '' for v in row] for row in s.iter_rows(values_only=True)]} for s in book]
             finally:book.close()
             return JsonResponse({'sheets':sheets})
-        data=json.loads(req.body);p=validate(data);midp=Snapshot.objects.filter(key='midp').first();entries=midp.data.get('entries',[]) if midp else [];m=match(entries,p)
+        data=json.loads(req.body);p=validate(data);midp=Snapshot.objects.filter(key='midp').first();entries=midp.data.get('entries',[]) if midp else [];scope=scope_rows();m=match(entries,p,scope)
         if not entries:raise ValueError('Load the MIDP before importing a log.')
         with transaction.atomic():
             record,_=Snapshot.objects.get_or_create(key='submissions/'+p['stage'],defaults={'data':{}});record=Snapshot.objects.select_for_update().get(pk=record.pk);old=record.data;revision=old.get('revision',0)
             if action=='preview':
-                previous=match(entries,old)['byId'];return JsonResponse({**{k:m[k] for k in ['matched','unmatched','ambiguous']},'baseRevision':revision,**{k:p[k] for k in ['voidCount','duplicateCount','missingDates']},'removedMatches':len(set(previous)-set(m['byId'])),'sample':[{**{k:e.get(k) for k in ['name','discipline']},'asset':e.get('scopeId'),**m['byId'][e['id']]} for e in entries if e['id'] in m['byId']][:30]})
+                previous=match(entries,old,scope)['byId'];return JsonResponse({**{k:m[k] for k in ['matched','unmatched','ambiguous']},'baseRevision':revision,**{k:p[k] for k in ['voidCount','duplicateCount','missingDates']},'removedMatches':len(set(previous)-set(m['byId'])),'sample':[{**{k:e.get(k) for k in ['name','discipline']},'asset':e.get('scopeId'),**m['byId'][e['id']]} for e in entries if e['id'] in m['byId']][:30]})
             if action!='import':return JsonResponse({'error':'Action not available.'},status=404)
             if data.get('baseRevision')!=revision:raise ValueError('This log changed. Preview it again.')
             if old and p['asOf']<old['asOf']:raise ValueError('An older log cannot replace the current log.')

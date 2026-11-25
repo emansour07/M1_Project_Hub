@@ -30,3 +30,19 @@ class SubmissionTests(TestCase):
     def test_void_and_future(self):
         p={**self.payload,'rows':[{'name':NAME,'date':'2026-11-01','workflowStatus':'VOID'},*self.payload['rows']]};self.assertEqual(validate(p)['voidCount'],1)
         with self.assertRaises(ValueError):validate({**self.payload,'rows':[{'name':NAME,'date':'2030-01-01'}]})
+
+    def test_flexible_codes_titles_and_saved_matches(self):
+        scope=[dict(id='Island-A33',code='A33',proposed='US1',parcel='102',aliases=['A33','US1'])]
+        old=NAME.replace('-102-SAP-US1-','-FXX-ARX-A33-')
+        report={'rows':[dict(name='cover.pdf',title='Drawing '+old+'-R00 title',date='2026-11-10',reference='1'),dict(name=old+'-R00.dwg',date='2026-11-10',reference='1')]}
+        m=match(self.entries,report,scope);self.assertEqual(m['matched'],1);self.assertEqual(len(m['byId']['one']['history']),1)
+        for bad in [NAME.replace('-102-','-121-'),NAME.replace('-05-','-42-'),NAME.replace('900001','900002')]:self.assertEqual(match(self.entries,{'rows':[{'name':bad}]},scope)['matched'],0)
+        self.assertEqual(match(self.entries+[dict(self.entries[0],id='copy')],report,scope)['matched'],0)
+        self.payload['mappings']=[dict(source=NAME.replace('900001','955011'),target=NAME)]
+        self.payload['rows']=[dict(name=NAME.replace('900001','955011')+'.pdf',date='2026-11-10')]
+        self.client.force_login(self.owner)
+        response=self.client.post('/api/submissions/import',data=json.dumps(self.payload),content_type='application/json');self.assertEqual(response.status_code,200,response.content)
+        saved=self.client.get('/api/submissions/workspace').json()['reports'][0];self.assertEqual(saved['mappings'],self.payload['mappings'])
+        self.assertEqual(self.client.get('/api/submissions/search',{'q':'US1'}).json()['entries'][0]['name'],self.entries[0]['name'])
+        self.assertEqual(attach({'entries':self.entries})['entries'][0]['arxSapacDate'],'2026-11-10')
+        self.assertEqual(match([dict(self.entries[0],name=NAME.replace('900001','900004'))],validate(self.payload),scope)['matched'],0)
