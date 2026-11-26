@@ -4,6 +4,10 @@ import json
 import re
 import time
 import zipfile
+from pathlib import Path
+NEW_ASSET_CODES=json.loads(Path(__file__).with_name("asset-code-policy.json").read_text())
+def confirmed_scope(scope):
+    return [{**a,"aliases":list(dict.fromkeys(str(v).upper() for v in [*a.get("aliases",[]),a.get("code"),a.get("proposed"),NEW_ASSET_CODES.get(a["id"])] if v))} for a in scope]
 from datetime import date, datetime, timezone, timedelta
 from django.db import transaction
 from django.http import JsonResponse
@@ -17,8 +21,11 @@ STAGES={'arxSapac':'ARX → SAPAC','sapacMace':'SAPAC → MACE'}
 FIELDS='name title date reference status workflowStatus revision'.split()
 def text(v):return '' if v is None else str(v).strip()
 def numbers(v):
-    s=re.sub(r'\s*-\s*','-',re.sub('[–—−]','-',text(v).upper()))
-    return list(dict.fromkeys(re.findall(r'(?:^|[^A-Z0-9])((?:M1-)(?:[A-Z0-9]+-){7}\d{6})(?![A-Z0-9])',s)))
+    s=re.sub(r'\s*-\s*','-',re.sub('[–—−_]','-',text(v).upper()))
+    out=[]
+    for n in re.findall(r'(?:^|[^A-Z0-9])((?:M1-)(?:[A-Z0-9]+-){7}\d{1,6})(?![A-Z0-9])',s):
+        p=n.split('-');p[4]=p[4].zfill(2) if p[4].isdigit() else p[4];p[8]=p[8].zfill(6);out.append('-'.join(p))
+    return list(dict.fromkeys(out))
 
 def key(v):
     ns=numbers(v)
@@ -44,10 +51,12 @@ def identity_keys(v,scope):
         if len(assets)>1:continue
         if len(assets)==1:p[1]=assets[0]['parcel'];p[3]='@'+assets[0]['id']
         if p[2]=='ARX':p[2]='SAP'
+        if p[6]=='PDF':p[6]='DWG'
         out.append('-'.join(p))
     return out
 
 def resolver(entries,scope):
+    scope=confirmed_scope(scope)
     exact={};aliases={};loose={}
     def add(index,k,e):
         values=index.setdefault(k,[])
@@ -70,6 +79,13 @@ def resolver(entries,scope):
             for e in candidates:found[e['id']]={**e,'matchReason':reason}
         return list(found.values())
     return resolve
+
+def suggestions(entries,value,scope):
+    scope=confirmed_scope(scope)
+    def stem(k):return '-'.join(k.split('-')[:-1]) if k.startswith('M1-') and len(k.split('-'))>=9 else None
+    targets={stem(k) for k in identity_keys(value,scope)}-{None}
+    if not targets:return []
+    return [{**{k:e.get(k) for k in ['id','name','description','discipline','sheet','row']},'asset':e.get('scopeId'),'reason':'Same naming fields, different document number; confirm identity'} for e in entries if any(stem(k) in targets for k in identity_keys(e['name'],scope))][:20]
 
 def scope_rows():
     record=Snapshot.objects.filter(key='knowledge').first()
@@ -98,12 +114,15 @@ def validate(data):
     result=dict(stage=data['stage'],source=source,asOf=asof,basis='latest',rows=rows,mappings=mappings(data.get('mappings')),voidCount=void,duplicateCount=duplicate,missingDates=missing)
     if len(json.dumps(result,ensure_ascii=False,separators=(',',':')).encode())>1700000:raise ValueError('The normalized log exceeds 1.7 MB.')
     return result
-def match(entries,report,scope=None):
-    resolve=resolver(entries,scope or []);rules={r['source']:r['target'] for r in report.get('mappings',[])};groups={};unmatched=[];ambiguous=[]
+def match(entries,report,scope=None,include_suggestions=False):
+    scope=confirmed_scope(scope or []);resolve=resolver(entries,scope);rules={key(r['source']):r['target'] for r in report.get('mappings',[])};groups={};unmatched=[];ambiguous=[]
     for r in report.get('rows',[]):
         override=rules.get(key(r['name']))
+        if not override:
+            keys=set(identity_keys(r['name'],scope));targets={target for source,target in rules.items() if keys.intersection(identity_keys(source,scope))}
+            if len(targets)==1:override=next(iter(targets))
         found=resolve(override) if override else list({e['id']:e for v in [r['name'],r.get('title','')] if v for e in resolve(v)}.values())
-        if not found:unmatched.append({**r,'reason':'Saved target no longer matches the MIDP' if override else 'No matching document number in the current MIDP'});continue
+        if not found:unmatched.append({**r,'reason':'Saved target no longer matches the MIDP' if override else 'No matching document number in the current MIDP','suggestions':suggestions(entries,r['name'],scope) if include_suggestions and not override else []});continue
         if len(found)!=1:ambiguous.append({**r,'reason':'More than one MIDP deliverable matches','candidates':[{k:c.get(k) for k in ['id','name','sheet','row','discipline']}|{'asset':c.get('scopeId')} for c in found]});continue
         groups.setdefault(found[0]['id'],[]).append({**r,'matchReason':'Owner-saved match' if override else found[0]['matchReason']})
     byid={}
@@ -150,7 +169,7 @@ def api(req,action):
                 sheets=[{'name':s.title,'rows':[[v.isoformat()[:10] if isinstance(v,(date,datetime)) else v if v is not None else '' for v in row] for row in s.iter_rows(values_only=True)]} for s in book]
             finally:book.close()
             return JsonResponse({'sheets':sheets})
-        data=json.loads(req.body);p=validate(data);midp=Snapshot.objects.filter(key='midp').first();entries=midp.data.get('entries',[]) if midp else [];scope=scope_rows();m=match(entries,p,scope)
+        data=json.loads(req.body);p=validate(data);midp=Snapshot.objects.filter(key='midp').first();entries=midp.data.get('entries',[]) if midp else [];scope=scope_rows();m=match(entries,p,scope,include_suggestions=action=='preview')
         if not entries:raise ValueError('Load the MIDP before importing a log.')
         with transaction.atomic():
             record,_=Snapshot.objects.get_or_create(key='submissions/'+p['stage'],defaults={'data':{}});record=Snapshot.objects.select_for_update().get(pk=record.pk);old=record.data;revision=old.get('revision',0)

@@ -28,4 +28,4 @@ export class M1State extends DurableObject {
  alarm(){const env=this.application.env;return runModelAlarm(this.storage,env.FORMA_SYNC_ENABLED==='true',()=>syncModelSources(env,false,36),()=>nextModelSyncAt(env));}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
-export default {fetch:async(request,env)=>{const r=await state(env).fetch(request);const h=new Headers(r.headers);h.set('X-M1-Worker','2026-11-17-assurance');return new Response(r.body,{status:r.status,headers:h});},scheduled:(event,env,ctx)=>ctx.waitUntil(Promise.allSettled([state(env).tick(),state(env).midpTick(),state(env).progressMailTick(),...(event.scheduledTime%300000===0?[state(env).assuranceTick()]:[])]))};
+export default {fetch:async(request,env)=>{const r=await state(env).fetch(request);const h=new Headers(r.headers);h.set('X-M1-Worker','2026-11-26-code-impact');return new Response(r.body,{status:r.status,headers:h});},scheduled:(event,env,ctx)=>ctx.waitUntil(Promise.allSettled([state(env).tick(),state(env).midpTick(),state(env).progressMailTick(),...(event.scheduledTime%300000===0?[state(env).assuranceTick()]:[])]))};

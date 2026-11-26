@@ -6,6 +6,17 @@ from .submissions import match,validate,attach
 
 NAME='M1-102-SAP-US1-05-BM003-BNM-XX-900001'
 class SubmissionTests(TestCase):
+    def test_new_codes_normalization_and_serial_suggestions(self):
+        scope=[dict(id='Island-A33',code='A33',proposed='US1',parcel='102',aliases=['A33','US1'])]
+        e=dict(id='one',name='M1-102-SAP-US1-05-AR010-DWG-XX-000001')
+        r={'rows':[{'name':'M1_FXX_ARX_USA_5_AR010_PDF_XX_1_REV02.pdf'}]}
+        self.assertEqual(match([e],r,scope)['matched'],1)
+        r={'rows':[{'name':e['name'].replace('000001','700001').replace('US1','USA')}]}
+        m=match([e],r,scope,include_suggestions=True)
+        self.assertEqual(m['matched'],0)
+        self.assertEqual(m['unmatched'][0]['suggestions'][0]['id'],'one')
+        r['mappings']=[dict(source=e['name'].replace('000001','700001'),target=e['name'])]
+        self.assertEqual(match([e],r,scope)['matched'],1)
     def setUp(self):
         self.entries=[dict(id='one',name=NAME+'-R00',scopeId='Island-A33',discipline='ARCH')]
         Snapshot.objects.create(key='midp',data={'entries':self.entries})

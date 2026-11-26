@@ -1,4 +1,5 @@
 // Shared matching policy: explicit document identities and confirmed aliases, never fuzzy credit.
+import {confirmedCodeScope} from './asset-code-policy.mjs';
 export const STAGES={arxSapac:'ARX → SAPAC',sapacMace:'SAPAC → MACE'};
 export const FIELDS={name:'Document number / File name',title:'Title / Description (optional drawing number)',date:'Submission date / Created on',reference:'Review ID / Transmittal',status:'Document review outcome',workflowStatus:'Workflow status (void check)',revision:'Revision / Version'};
 const text=v=>String(v??'').trim();
@@ -13,8 +14,8 @@ export function submissionDay(value,order='ISO'){
 }
 // Extract complete nine-part M1 numbers from titles; descriptions after the number are not identity.
 export function documentNumbers(value){
- const s=text(value).toUpperCase().replace(/[–—−]/g,'-').replace(/\s*-\s*/g,'-');
- return [...new Set([...s.matchAll(/(?:^|[^A-Z0-9])((?:M1-)(?:[A-Z0-9]+-){7}\d{6})(?![A-Z0-9])/g)].map(m=>m[1]))];
+ const s=text(value).toUpperCase().replace(/[–—−_]/g,'-').replace(/\s*-\s*/g,'-');
+ return [...new Set([...s.matchAll(/(?:^|[^A-Z0-9])((?:M1-)(?:[A-Z0-9]+-){7}\d{1,6})(?![A-Z0-9])/g)].map(m=>{const p=m[1].split('-');if(/^\d$/.test(p[4]))p[4]=p[4].padStart(2,'0');p[8]=p[8].padStart(6,'0');return p.join('-');}))];
 }
 export function documentKey(value){const numbers=documentNumbers(value);return numbers.length===1?numbers[0]:text(value).split(/[\\/]/).at(-1).toUpperCase().replace(/\.(?:PDF|RVT|IFC|NWC|NWD|DWFX|DWG|DXF|DGN|DOCX?|XLSX?)$/,'').replace(/[-_]R\d{1,3}$/,'');}
 export function validateMappings(value=[]){
@@ -27,10 +28,11 @@ function identityKeys(value,scope=[]){
   // A legacy asset code shared by two assets is not sufficient evidence, even if only one is in the MIDP.
   if(assets.length>1)return [];
   if(assets.length===1){p[1]=assets[0].parcel;p[3]='@'+assets[0].id;}
-  if(p[2]==='ARX')p[2]='SAP';return [p.join('-')];
+  if(p[2]==='ARX')p[2]='SAP';if(p[6]==='PDF')p[6]='DWG';return [p.join('-')];
  });
 }
 export function submissionResolver(entries,scope=[]){
+ scope=confirmedCodeScope(scope);
  const exact=new Map(),aliases=new Map(),loose=new Map(),add=(index,key,e)=>{if(!index.has(key))index.set(key,[]);if(!index.get(key).some(c=>c.id===e.id))index.get(key).push(e);};
  for(const e of entries){for(const key of documentNumbers(e.name).length?documentNumbers(e.name):[documentKey(e.name)])add(exact,key,e);for(const key of identityKeys(e.name,scope)){add(aliases,key,e);const p=key.split('-');if(p[0]==='M1'){p[1]='*';add(loose,p.join('-'),e);}}}
  return value=>{
@@ -44,6 +46,11 @@ export function submissionResolver(entries,scope=[]){
   return [...found.values()];
  };
 }
+// Different serials are candidates only. A filename alone cannot prove renumbering.
+export function submissionSuggestions(entries,value,scope=[]){
+ return suggestionResolver(entries,scope)(value);
+}
+function suggestionResolver(entries,scope){scope=confirmedCodeScope(scope);const index=new Map(),stem=k=>{const p=k.split('-');return p[0]==='M1'&&p.length>=9?p.slice(0,-1).join('-'):null;};for(const e of entries)for(const k of identityKeys(e.name,scope)){const s=stem(k);if(s){if(!index.has(s))index.set(s,[]);index.get(s).push(e);}}return value=>[...new Map(identityKeys(value,scope).flatMap(k=>index.get(stem(k))||[]).map(e=>[e.id,e])).values()].slice(0,20).map(e=>({id:e.id,name:e.name,description:e.description,asset:e.scopeId,discipline:e.discipline,sheet:e.sheet,row:e.row,reason:'Same naming fields, different document number; confirm identity'}));}
 export function searchSubmissionEntries(entries,query){const words=text(query).toUpperCase().split(/\s+/).filter(Boolean);if(!words.length)return [];return entries.filter(e=>words.every(w=>[e.name,e.description,e.scopeId,e.discipline].join(' ').toUpperCase().includes(w))).slice(0,40).map(e=>({name:e.name,description:e.description,asset:e.scopeId,discipline:e.discipline}));}
 export function suggestColumns(headers){const aliases={title:['title','description','document title','drawing title','document number & description','document number & item description','item description'],name:['file name','filename','document number','drawing number','document no','document no.'],date:['created on','submission date','submitted date','date submitted','issue date'],reference:['id','review id','transmittal','transmittal number','reference'],status:['review status','approval status','document status','outcome'],workflowStatus:['status','workflow status'],revision:['revision','version']};return Object.fromEntries(Object.entries(aliases).map(([k,a])=>[k,headers.findIndex(h=>a.includes(text(h).toLowerCase().replace(/[_\s]+/g,' ')))]));}
 export function parseLogCSV(source){source=source.replace(/^\uFEFF/,'');const delim=source.split(/\r?\n/)[0].includes('\t')?'\t':((source.split(/\r?\n/)[0].match(/;/g)||[]).length>(source.split(/\r?\n/)[0].match(/,/g)||[]).length?';':',');const rows=[];let row=[],cell='',quote=false;for(let i=0;i<source.length;i++){const c=source[i];if(c==='"'){if(quote&&source[i+1]==='"'){cell+='"';i++;}else quote=!quote;}else if(c===delim&&!quote){row.push(cell);cell='';}else if(/[\r\n]/.test(c)&&!quote){if(c==='\r'&&source[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}else cell+=c;}if(quote)throw Error('Unclosed CSV quotation.');row.push(cell);if(row.some(text))rows.push(row);return rows;}
@@ -65,12 +72,13 @@ export function validateLog(input){
  if(!rows.length)throw Error('No non-void documents were found. The saved log is unchanged.');
  const out={stage:input.stage,source,asOf,basis,rows,mappings:validateMappings(input.mappings),voidCount,duplicateCount,missingDates};if(new TextEncoder().encode(JSON.stringify(out)).length>1700000)throw Error('The normalized log is too large. Use a scoped report below 1.7 MB after import.');return out;
 }
-export function matchLog(entries,report,scope=[]){
- const resolve=submissionResolver(entries,scope),rules=new Map((report?.mappings||[]).map(r=>[r.source,r.target]));
- const matched=new Map(),unmatched=[],ambiguous=[];
+export function matchLog(entries,report,scope=[],{includeSuggestions=false}={}){
+ const resolve=submissionResolver(entries,scope),policy=confirmedCodeScope(scope),rules=new Map((report?.mappings||[]).map(r=>[documentKey(r.source),r.target]));
+ const savedTarget=r=>{const direct=rules.get(documentKey(r.name));if(direct)return direct;const keys=new Set(identityKeys(r.name,policy));const targets=[...new Set([...rules].filter(([source])=>identityKeys(source,policy).some(k=>keys.has(k))).map(([,target])=>target))];return targets.length===1?targets[0]:null;};
+ const matched=new Map(),unmatched=[],ambiguous=[];let suggest;
  for(const r of report?.rows||[]){
-  const override=rules.get(documentKey(r.name));let candidates=override?resolve(override):[...new Map([r.name,r.title].filter(Boolean).flatMap(resolve).map(e=>[e.id,e])).values()];
-  if(!candidates.length){unmatched.push({...r,reason:override?'Saved target no longer matches the MIDP':'No matching document number in the current MIDP'});continue;}
+  const override=savedTarget(r);let candidates=override?resolve(override):[...new Map([r.name,r.title].filter(Boolean).flatMap(resolve).map(e=>[e.id,e])).values()];
+  if(!candidates.length){if(includeSuggestions&&!override&&!suggest)suggest=suggestionResolver(entries,scope);unmatched.push({...r,reason:override?'Saved target no longer matches the MIDP':'No matching document number in the current MIDP',suggestions:includeSuggestions&&!override?suggest(r.name):[]});continue;}
   if(candidates.length!==1){ambiguous.push({...r,reason:'More than one MIDP deliverable matches',candidates:candidates.map(c=>({id:c.id,name:c.name,sheet:c.sheet,row:c.row,discipline:c.discipline,asset:c.scopeId}))});continue;}
   const e=candidates[0],id=e.id;if(!matched.has(id))matched.set(id,[]);matched.get(id).push({...r,matchReason:override?'Owner-saved match':e.matchReason});
  }

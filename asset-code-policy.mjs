@@ -1,0 +1,13 @@
+// Confirmed replacements from M1-MAC-ALL-GID-BIM-0014-R01.
+// WP1, SL1, SL2 and the four Island external-works codes remain unconfirmed.
+export const NEW_ASSET_CODES = Object.freeze({
+ 'Mainland-SWR':'SW1','Mainland-SP':'SWP','Mainland-WT1':'W01','Mainland-WT2':'W02',
+ 'Mainland-SG2':'SG2','Mainland-G03':'G03','Mainland-FP1':'W03','Mainland-VS1':'SVS',
+ 'Mainland-DI1':'H01','Mainland-SIO':'SWO','Mainland-EW-GRD':'ESC','Mainland-EW-ROD':'ERF',
+ 'Mainland-EW-LAN':'ESH','Mainland-EW-UTL':'ESU','Island-DC1':'DC1','Island-G01':'G01',
+ 'Island-ST1':'ST1','Island-SG1':'MVS','Island-G02':'G02','Island-A55':'IWT',
+ 'Island-A33':'USA','Island-A36':'USB','Island-A37':'USC','Island-A52':'ES2','Island-A57':'WT3',
+ 'Island-A48':'CRA','Island-C48':'CRC','Island-D48':'CRD','Island-E48':'CRE',
+ 'Subsea-SS1':'SS1','Subsea-SS2':'SS2','Island-DT1':'DT1'
+});
+export function confirmedCodeScope(scope=[]){return scope.map(a=>({...a,aliases:[...new Set([...(a.aliases||[]),a.code,a.proposed,NEW_ASSET_CODES[a.id]].filter(Boolean).map(v=>String(v).toUpperCase()))]}));}
