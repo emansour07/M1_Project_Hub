@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import PptxGenJS from 'pptxgenjs';
 import {unzipSync,strFromU8} from 'fflate';
-import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan} from '../delivery-monitor-core.mjs';
+import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan,deliveryPath,deliveryValue} from '../delivery-monitor-core.mjs';
 import {createDeliveryPpt} from '../delivery-monitor-ppt.mjs';
 const name='M1-102-SAP-US1-05-BM010-BNM-XX-900001-R00',entry=(id='one')=>({id,name,scopeId:'Island-A33',scopeAsset:'US1',scopeName:'Accommodation',discipline:'ARCH',category:'Models',plannedDate:'2026-12-01'}),asOf='2026-11-28';
 const log=(date,status)=>({date,status,history:[{date,statuses:status?[status]:[],reference:'R1'}]});
@@ -59,4 +59,32 @@ test('all MIDP categories reconcile with the project total and category filters'
  assert.equal(counts.returned,1);assert.equal(counts.submitted,6);
  assert.equal(filterDeliveryMonitor(report.rows,{category:['Reports','Calculations']}).length,2);
  for(const level of ['region','asset','discipline','stage'])assert.equal(deliveryGroups(report.rows,level).reduce((n,g)=>n+g.counts.total,0),types.length);
+});
+
+test('selection path follows single choices from the top; exports start below the selection',()=>{
+ assert.deepEqual(deliveryPath({}),[]);assert.deepEqual(deliveryPath({region:['Island'],asset:['Island-A33'],stage:['05']}),['region','asset']);
+ assert.deepEqual(deliveryPath({region:['Island','Mainland'],asset:['Island-A33']}),[]);assert.deepEqual(deliveryPath({asset:['Island-A33']}),[]);
+ const entries=[['ARCH','05'],['ARCH','42'],['STR','05']].map(([discipline,stage],i)=>({...entry(String(i)),discipline,name:name.replace('-05-','-'+stage+'-').replace('900001','90000'+i)}));
+ const rows=buildDeliveryMonitor({midp:{source:{},entries},scope},asOf).rows;
+ assert.deepEqual(progressExportPlan(rows,'view',0).map(p=>p.level),['region']);
+ assert.deepEqual(progressExportPlan(rows,'view',2).map(p=>p.level),['discipline']);
+ assert.deepEqual(progressExportPlan(rows,'view',4).map(p=>p.level),['stage']);
+ assert.deepEqual(progressExportPlan(rows,'stage',1).map(p=>p.level),['asset','discipline','stage']);
+ assert.deepEqual(progressExportPlan(rows,'region',2).map(p=>p.level),['region']);
+ // Asset → discipline → RIBA stage keeps every deliverable exactly once at each level.
+ const stages=progressExportPlan(rows,'stage',1).at(-1).groups;assert.equal(stages.length,3);assert.equal(stages.reduce((n,g)=>n+g.counts.total,0),3);
+ assert.deepEqual(stages.map(g=>[g.path.asset,g.path.discipline,g.path.stage]),[['Island-A33','ARCH','05'],['Island-A33','ARCH','42'],['Island-A33','STR','05']]);
+});
+test('unassigned deliverables stay selectable and counted under their displayed group',()=>{
+ const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('loose'),scopeId:'',discipline:''}]},scope},asOf).rows,loose=rows.find(r=>r.id==='loose');
+ assert.equal(deliveryValue(loose,'asset'),'Asset not assigned');assert.equal(deliveryValue(loose,'discipline'),'Unclassified');assert.equal(deliveryValue(loose,'responsibility'),'ARX');
+ assert.equal(filterDeliveryMonitor(rows,{asset:['Asset not assigned']}).length,1);assert.equal(filterDeliveryMonitor(rows,{asset:['Island-A33']}).length,1);
+ assert.equal(deliveryGroups(rows,'asset').reduce((n,g)=>n+g.counts.total,0),2);
+});
+test('PPTX for a selection starts below it, carries the selection text and keeps native charts',async()=>{
+ const rows=['progress','submitted','unknown'].map((state,i)=>({...entry(String(i)),state,region:'Island',assetLabel:'A33 · Accommodation',stage:i?'05':'42'}));
+ const ppt=createDeliveryPpt(PptxGenJS,{rows,report:{asOf,sources:{midp:1,tracker:1,logs:[]}},depth:'view',start:2,title:'A33 delivery status',context:'Whole project › Island › A33 | 3 of 9 project deliverables'}),zip=unzipSync(await ppt.write({outputType:'uint8array'}));
+ assert.equal(Object.keys(zip).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).length,2);
+ const first=strFromU8(zip['ppt/slides/slide1.xml']);assert.match(first,/A33 delivery status/);assert.match(first,/3 of 9 project deliverables/);
+ assert.equal(Object.keys(zip).filter(n=>/^ppt\/charts\/chart\d+\.xml$/.test(n)).length,2);
 });

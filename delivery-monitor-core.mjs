@@ -62,19 +62,24 @@ export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
  });
  return {rows,asOf,loaded:!!midp?.source,trackerLoaded:!!tracker?.source,ambiguousTracker,sources:{midp:midp?.source?.checkedAt||null,tracker:tracker?.source?.checkedAt||null,logs:midp?.submissionLogs||[]}};
 }
+// One place for the value a deliverable is grouped and filtered by, including the fallbacks shown to users.
+export const deliveryValue=(r,k)=>k==='asset'?r.scopeId||'Asset not assigned':k==='discipline'?r.discipline||'Unclassified':k==='responsibility'?r.scopeResponsibility||'ARX':k==='actualOriginator'?r.actualOriginator||'Not assigned':r[k];
+// The hierarchy position is the run of single selections from the top: region, then asset, discipline, stage.
+export function deliveryPath(filters={}){const path=[];for(const k of HIERARCHY){if(filters[k]?.length!==1)break;path.push(k);}return path;}
 export function filterDeliveryMonitor(rows,filters={}){
- const matches=(key,value)=>!filters[key]?.length||filters[key].includes(value);
- return filterDeliverables(rows,filters).filter(r=>matches('region',r.region)&&matches('state',r.state));
+ const matches=(key,value)=>!filters[key]?.length||filters[key].includes(value),{asset,...rest}=filters;
+ return filterDeliverables(rows,rest).filter(r=>matches('asset',deliveryValue(r,'asset'))&&matches('region',r.region)&&matches('state',r.state));
 }
 export function deliveryCounts(rows){const out=Object.fromEntries(DELIVERY_STATES.map(s=>[s.key,0]));for(const r of rows)out[r.state]++;return {...out,total:rows.length,models:rows.filter(r=>r.category==='Models').length,drawings:rows.filter(r=>r.category==='Drawings').length,categories:rows.reduce((counts,r)=>{const category=r.category||'Unclassified';counts[category]=(counts[category]||0)+1;return counts;},{})};}
 export function deliveryGroups(rows,level,withParents=false){
- const pos=HIERARCHY.indexOf(level),fields=withParents?HIERARCHY.slice(0,pos+1):[level],get=(r,k)=>k==='asset'?r.scopeId||'Asset not assigned':k==='discipline'?r.discipline||'Unclassified':r[k];
+ const pos=HIERARCHY.indexOf(level),fields=withParents?HIERARCHY.slice(0,pos+1):[level],get=deliveryValue;
  const label=(r,k)=>k==='asset'?r.assetLabel:k==='stage'?stageLabel(r.stage):get(r,k);
  const groups=new Map();for(const r of rows){const values=fields.map(k=>get(r,k)),id=JSON.stringify(values);if(!groups.has(id))groups.set(id,{id,value:get(r,level),label:fields.map(k=>label(r,k)).join(' / '),rows:[],path:Object.fromEntries(fields.map(k=>[k,get(r,k)]))});groups.get(id).rows.push(r);}
  return [...groups.values()].map(g=>({...g,counts:deliveryCounts(g.rows)})).sort((a,b)=>a.label.localeCompare(b.label,undefined,{numeric:true}));
 }
-export function progressExportPlan(rows,depth='stage'){
- const last=HIERARCHY.indexOf(depth);return HIERARCHY.slice(0,last+1).flatMap(level=>{const groups=deliveryGroups(rows,level,true),perPage=level==='stage'?7:level==='discipline'?8:10,pages=[];for(let i=0;i<groups.length;i+=perPage)pages.push({level,groups:groups.slice(i,i+perPage),part:Math.floor(i/perPage)+1,parts:Math.ceil(groups.length/perPage)});return pages;});
+// start = levels already fixed by the selection. depth 'view' charts only the next level below the selection.
+export function progressExportPlan(rows,depth='stage',start=0){
+ const last=depth==='view'?Math.min(start,HIERARCHY.length-1):HIERARCHY.indexOf(depth);return HIERARCHY.slice(Math.min(start,last),last+1).flatMap(level=>{const groups=deliveryGroups(rows,level,true),perPage=level==='stage'?7:level==='discipline'?8:10,pages=[];for(let i=0;i<groups.length;i+=perPage)pages.push({level,groups:groups.slice(i,i+perPage),part:Math.floor(i/perPage)+1,parts:Math.ceil(groups.length/perPage)});return pages;});
 }
 
 export function deliveryCategoryText(counts){return Object.entries(counts.categories).sort(([a],[b])=>a.localeCompare(b)).map(([name,n])=>n.toLocaleString('en-GB')+' '+name.toLowerCase()).join(' · ');}
