@@ -3,7 +3,7 @@ import {stageLabel} from './delivery-core.mjs';
 import {exportDeliveryPpt} from './delivery-monitor-ppt.mjs';
 // Delivery status: Whole project → Island/Mainland → Asset → Discipline → RIBA stage.
 // The view only selects and counts deliverables; every status comes from delivery-monitor-core.mjs.
-let H,source={},report,filters={},split=null,scale='qty',sort='az',page=0,openPick=null,pickSearch='',assets=new Map(),regionCodes=new Map(),expanded=new Set(),expandAll=false,stageColumns=true;
+let H,source={},report,filters={},split=null,scale='share',sort='az',page=0,openPick=null,pickSearch='',assets=new Map(),regionCodes=new Map(),expanded=new Set(),expandAll=false,stageColumns=true;
 const PAGE=25,$=id=>document.getElementById(id);
 const FIELDS={category:['Type','types'],region:['Region','regions'],asset:['Asset','assets'],discipline:['Discipline','disciplines'],stage:['RIBA stage','RIBA stages'],responsibility:['ARX / ATM','parties'],actualOriginator:['Company','companies'],state:['Status','statuses']};
 const PICKS=['category','region','asset','discipline','stage','responsibility','actualOriginator'],SPLITS=['asset','discipline','stage','category','actualOriginator'];
@@ -131,7 +131,7 @@ function render(){if(!H)return;const {esc}=H,rows=selected(),counts=deliveryCoun
  $('monitor-view').hidden=!canCols;for(const b of document.querySelectorAll('[data-monitor-view]'))b.setAttribute('aria-pressed',String((b.dataset.monitorView==='stage')===stageColumns));
  $('monitor-expand').hidden=!nested||!top.length;$('monitor-expand').textContent=expandAll?'Collapse all':'Expand all';$('monitor-expand').title='Show '+below.map(x=>FIELDS[x][1]).join(' and ')+' under each '+FIELDS[k][0].toLowerCase();
  const grid=cols?'grid-template-columns:minmax(210px,30%) repeat('+cols.length+',minmax(78px,1fr)) 54px 84px 84px':'';
- const head=cols?cols.map(c=>'<span class="dm-colhead" title="'+esc(stageLabel(c))+'">'+esc(STAGE_SHORT[c]||c)+' <b>'+num(rows.filter(r=>r.stage===c).length)+'</b></span>').join(''):'<span>'+(scale==='qty'?'Quantity by status':'Share by status')+'</span>';
+ const head=cols?cols.map(c=>'<span class="dm-colhead" title="'+esc(stageLabel(c))+'">'+esc(STAGE_SHORT[c]||c)+' <b>'+num(rows.filter(r=>r.stage===c).length)+'</b></span>').join(''):'<span>'+'Status share of each row · quantities shown'+'</span>';
  $('monitor-bars').innerHTML=top.length?'<div class="dm-xscroll"><div'+(cols?' style="min-width:'+(490+cols.length*84)+'px"':'')+'><div class="dm-row dm-rowhead" style="'+grid+'"><span>'+FIELDS[k][0]+(nested?' › '+below.map(x=>FIELDS[x][0]).join(' › '):'')+'</span>'+head+'<span>Qty</span><span title="Submitted to SAPAC or beyond, as a share of the row">Completion</span><span title="Approved by MACE, as a share of the row">Approval</span></div><div class="dm-bars">'+barRows(rows,k,0,{},max,rows.length,cols,grid)+'</div></div></div>'
   :'<p class="dm-empty">'+(loaded?'No deliverables match. Clear a filter.':'Loading the current TIDPs…')+'</p>';
  // Nothing is shown while both logs are loaded. If either has a problem, only the two names appear: green loaded, red not.
@@ -145,7 +145,7 @@ function render(){if(!H)return;const {esc}=H,rows=selected(),counts=deliveryCoun
  renderRegister(rows);renderExport(rows);
 }
 // One stacked status bar. labels=true prints quantities inside segments that are wide enough.
-function statusBar(counts,max,tip,labels){const {esc}=H;return '<div class="dm-barbg"><div class="dm-stack" style="width:'+(scale==='qty'?Math.max(.6,counts.total/max*100):100)+'%">'+DELIVERY_STATES.filter(s=>counts[s.key]).map(s=>{const share=counts[s.key]/counts.total,wide=share*(scale==='qty'?counts.total/max:1);return '<button data-monitor-state="'+s.key+'" style="width:'+share*100+'%;background:'+s.color+'" aria-label="'+esc(tip+' — '+s.label+': '+counts[s.key])+'" title="'+esc(tip+' — '+s.label+': '+num(counts[s.key])+' of '+num(counts.total)+' ('+pct(counts[s.key],counts.total)+')')+'">'+(labels&&wide>.07?(scale==='qty'?num(counts[s.key]):pct(counts[s.key],counts.total)):'')+'</button>';}).join('')+'</div></div>';}
+function statusBar(counts,max,tip,labels){const {esc}=H;return '<div class="dm-barbg"><div class="dm-stack" style="width:'+(scale==='qty'?Math.max(.6,counts.total/max*100):100)+'%">'+DELIVERY_STATES.filter(s=>counts[s.key]).map(s=>{const share=counts[s.key]/counts.total,wide=share*(scale==='qty'?counts.total/max:1);return '<button data-monitor-state="'+s.key+'" style="width:'+share*100+'%;background:'+s.color+'" aria-label="'+esc(tip+' — '+s.label+': '+counts[s.key])+'" title="'+esc(tip+' — '+s.label+': '+num(counts[s.key])+' of '+num(counts.total)+' ('+pct(counts[s.key],counts.total)+')')+'">'+(labels&&wide>.07?num(counts[s.key]):'')+'</button>';}).join('')+'</div></div>';}
 // One row per group; a hierarchy row can open to show the next level inside it (asset → discipline → RIBA stage).
 // With cols, RIBA stages are columns instead of the last nested level: one status bar and quantity per stage.
 function barRows(list,level,depth,parent,max,total,cols,grid){const {esc}=H,after=HIERARCHY.includes(level)?HIERARCHY[HIERARCHY.indexOf(level)+1]:null,next=cols&&after==='stage'?null:after,where=g=>level==='asset'?(assets.get(g.value)?.region||'')+' '+g.label:g.label;
