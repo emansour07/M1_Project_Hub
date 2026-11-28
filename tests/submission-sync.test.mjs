@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';
 import {utils,write} from 'xlsx';
-import {logStage,pickLogFiles,locateLogTable,logDateOrder,logFromSheets} from '../submission-sync-core.mjs';
+import {logStage,pickLogFiles,locateLogTable,logDateOrder,logFromSheets,registerTable,registerRows,registerDay} from '../submission-sync-core.mjs';
 import {syncSubmissionLogs,submissionSyncStatus} from '../submission-sync.mjs';
 import {SubmissionStore} from '../submissions.mjs';
-import {validateLog} from '../submissions-core.mjs';
+import {validateLog,matchLog} from '../submissions-core.mjs';
 const name='M1-102-SAP-US1-05-BM003-BNM-XX-900001',other='M1-102-SAP-US2-05-BM003-BNM-XX-900001';
 const entries=[{id:'one',name:name+'-R00',scopeId:'Island-A33',discipline:'ARCH'},{id:'two',name:other,scopeId:'Island-A36'}];
 const head=['ID','Status','Created on','File name','Review status'];
@@ -73,4 +73,25 @@ test('a folder that cannot be listed changes nothing and is retried soon',async(
  const {db,env}=environment();try{const store=new SubmissionStore(env.SQL);const result=await syncSubmissionLogs(env,true,{entries,scope:[],store,list:async()=>{throw Error('403');}});
   assert.match(result.error,/could not be checked/);assert.equal(store.list().length,0);assert.equal((await syncSubmissionLogs(env,false,{entries,scope:[],store,list:async()=>[]})).skipped,true);
  }finally{db.close();}
+});
+
+const midpName='M1-FXX-SAP-US1-05-BM003-BNM-XX-900001';
+const registerSheet=(...rows)=>[['mace','','Contractor_F (M1) - SHD'],['No.','CRS Number','Item Description','Latest Rev.','Latest WF.','Current Status','First Revision','','','','','Second Revision','','',''],['','','','','','','Date','WF No.','Response','Discipline','Code','Date','WF No.','Response','Code'],...rows];
+test('MACE register: every category sheet, drawing number from Item Description, one round per dated revision',()=>{
+ const sheets=[{name:'Shop Drawing',rows:registerSheet(
+   ['1','M1-SAP-FXX-CRS-STR-0001',midpName+'- RIBA 5 – A33 General Report','R01','31400','A','2026-11-02','31366','2026-11-09','STR','C','10/Nov/26','31400','','A'],
+   ['2','M1-SAP-FXX-CRS-CIV-0007','M1-SAP-FXX-DRS-CIV-0005 _ PROPOSED GENERAL SITE LOCATION','R00','25664','D','02/Sep/26','25664','05/Sep/26','CIV','D','','','',''],
+   ['3','M1-SAP-FXX-CRS-CIV-0011','M1-SAP-FXX-DRS-CIV-0009 - BATCHING PLANT','R00','25668','UR','06-Sep-2026','25668','','CIV','UR','n/a','','',''],
+   ['','','','','','','','','','','','','','',''])},
+  {name:'BIM',rows:registerSheet(['1','M1-SAP-FXX-CRS-BIM-0001','M1-102-SAP-US2-05-BM003-BNM-XX-900001 MODEL','R00','400','X1','2026-11-03','400','','BIM','X1','','','',''])},
+  {name:'All Document Statistics',rows:[['Category','Count'],['Shop Drawing',3]]}];
+ assert.equal(registerTable(sheets[2].rows),null);assert.deepEqual(registerTable(sheets[0].rows).revisions.map(r=>[r.label,r.date,r.reference,r.code]),[['First Revision',6,7,10],['Second Revision',11,12,14]]);
+ const r=registerRows(sheets);assert.deepEqual(r.sheets,['Shop Drawing','BIM']);assert.equal(r.undated,1);
+ assert.deepEqual(r.rows.map(x=>[x.date,x.reference,x.revision,x.status]),[['2026-11-02','31366','First Revision','Revise and resubmit'],['2026-11-10','31400','Second Revision','Approved'],['2026-09-02','25664','First Revision','Rejected'],['2026-09-06','25668','First Revision','Under review'],['2026-11-03','400','First Revision','Code X1']]);
+ assert.equal(registerDay('02/Sep/26'),'2026-09-02');assert.equal(registerDay('1 November 2026'),'2026-11-01');assert.equal(registerDay(''),null);assert.equal(registerDay('31/Feb/26'),undefined);assert.equal(registerDay('04/05/2026'),undefined);
+ // Through the normal log path: SAPAC's own documents stay unmatched, the MIDP deliverable takes its latest round.
+ const log=logFromSheets(sheets,{stage:'sapacMace',source:'M1-SAP-MAC-Review_Report.xlsx',asOf:'2026-11-20'}),valid=validateLog(log),m=matchLog([{id:'one',name:'M1-102-SAP-US1-05-BM003-BNM-XX-900001-R00',scopeId:'Island-A33'},{id:'two',name:'M1-102-SAP-US2-05-BM003-BNM-XX-900001',scopeId:'Island-A36'}],valid,[{id:'Island-A33',code:'A33',proposed:'US1',zone:'Island',parcel:'102',aliases:['A33','US1']},{id:'Island-A36',code:'A36',proposed:'US2',zone:'Island',parcel:'102',aliases:['A36','US2']}]);
+ assert.equal(log.table.dateOrder,'register');assert.equal(valid.rows.length,5);assert.equal(m.matched,2);assert.equal(m.unmatched.length,2);
+ assert.equal(m.byId.one.date,'2026-11-10');assert.equal(m.byId.one.status,'Approved');assert.equal(m.byId.one.history.length,2);assert.equal(m.byId.two.status,'Code X1');
+ assert.throws(()=>logFromSheets([{name:'S',rows:registerSheet(['1','x','y','','','','','','','','','','','',''])}],{stage:'sapacMace',source:'a',asOf:'2026-11-20'}),/no dated revisions/);
 });

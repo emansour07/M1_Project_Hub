@@ -9,7 +9,7 @@ import {SubmissionStore} from './submissions.mjs';
 import {STAGES} from './submissions-core.mjs';
 import {pickLogFiles,logFromSheets,LOG_FILE_NAMES} from './submission-sync-core.mjs';
 // READER changes whenever the reading rules change, so a file an older release could not read is tried again at once.
-const KEY='m1/submission-logs/state',INTERVAL=6*3600000,LEASE=120000,READER=2;
+const KEY='m1/submission-logs/state',INTERVAL=6*3600000,LEASE=120000,READER=3;
 const read=async env=>await(await env.BUCKET.get(KEY))?.json()||{};
 const write=(env,state)=>env.BUCKET.put(KEY,JSON.stringify(state));
 const dubaiDay=value=>{const t=Date.parse(value||'');return Number.isFinite(t)?new Date(t+4*3600000).toISOString().slice(0,10):'';};
@@ -41,7 +41,7 @@ export async function syncSubmissionLogs(env,force=false,services={}){
     if(parsed.sheets.some(s=>s.rows.length>=10050))throw Error('The worksheet exceeds 10,000 entries.');
     const current=store.list().find(r=>r.stage===stage),log=logFromSheets(parsed.sheets,{stage,source:data.source.name||file.name,asOf:dubaiDay(data.source.updatedAt),mappings:current?.mappings||[]});
     const {table,...payload}=log,report=store.save({...payload,baseRevision:current?.revision||0},entries,scope);
-    state.logs[stage]={state:'published',error:null,itemId:file.id,versionId:data.source.versionId||file.versionId,version:data.source.version??null,name:data.source.name||file.name,fileUpdatedAt:data.source.updatedAt||null,asOf:report.asOf,rows:report.rows.length,sheet:table.sheet,headerRow:table.headerRow,dateOrder:table.dateOrder,publishedAt:now,checkedAt:now};
+    state.logs[stage]={state:'published',error:null,itemId:file.id,versionId:data.source.versionId||file.versionId,version:data.source.version??null,name:data.source.name||file.name,fileUpdatedAt:data.source.updatedAt||null,asOf:report.asOf,rows:report.rows.length,sheet:table.sheet,headerRow:table.headerRow,dateOrder:table.dateOrder,undated:table.undated||0,publishedAt:now,checkedAt:now};
    }catch(e){
     console.error('Submission log not published',stage,e.message);
     // SAPAC may issue to MACE in packages, so its log can legitimately list no MIDP deliverable by number.

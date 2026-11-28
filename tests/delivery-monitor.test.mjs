@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import PptxGenJS from 'pptxgenjs';
 import {unzipSync,strFromU8} from 'fflate';
-import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan,deliveryPath,deliveryValue} from '../delivery-monitor-core.mjs';
+import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan,deliveryPath,deliveryValue,incomingStage,contractualStage} from '../delivery-monitor-core.mjs';
 import {createDeliveryPpt} from '../delivery-monitor-ppt.mjs';
 const name='M1-102-SAP-US1-05-BM010-BNM-XX-900001-R00',entry=(id='one')=>({id,name,scopeId:'Island-A33',scopeAsset:'US1',scopeName:'Accommodation',discipline:'ARCH',category:'Models',plannedDate:'2026-12-01'}),asOf='2026-11-28';
 const log=(date,status)=>({date,status,history:[{date,statuses:status?[status]:[],reference:'R1'}]});
@@ -116,4 +116,12 @@ test('two reported positions: Submitted to SAPAC from the ARX log, Submitted to 
  const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),submissions:{sapacMace:mace}},{...entry('c'),submissions:{arxSapac:sapac}}]},scope},asOf).rows,c=deliveryCounts(rows);
  assert.deepEqual([c.outstanding,c.progress,c.submitted,c.mace,c.returned,c.total],[1,0,1,1,0,3]);assert.equal('unknown' in c,false);
  assert.equal(filterDeliveryMonitor(rows,{state:['mace']}).length,1);
+});
+
+test('contractual scope follows the MIDP summary: stages after the incoming stage, unknown assets unmarked',()=>{
+ assert.equal(incomingStage('Island-DC1'),'RIBA 3');assert.equal(incomingStage('Island-A33'),'RIBA 4');assert.equal(incomingStage('Island-NEW'),null);
+ assert.deepEqual(['22','32','42','05'].map(s=>contractualStage('Island-G01',s)),[false,false,true,true]);
+ assert.deepEqual(['42','05','Not provided'].map(s=>contractualStage('Mainland-EW-GRD',s)),[false,true,false]);
+ assert.equal(contractualStage('Mainland-SIO','42'),true);assert.equal(contractualStage('Island-NEW','05'),null);
+ const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),name:name.replace('-05-','-42-')}]},scope},asOf).rows;assert.deepEqual(rows.map(r=>[r.stage,r.contractual]),[['05',true],['42',false]]);
 });

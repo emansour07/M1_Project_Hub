@@ -14,6 +14,15 @@ export const STAGE_SHORT={'21':'RIBA 2 · 50%','22':'RIBA 2 · 100%','31':'RIBA 
 const STAGE_ORDER=['00','01','21','22','31','32','41','42','50','05','06','07','XX'],stageRank=c=>{const i=STAGE_ORDER.indexOf(c);return i<0?STAGE_ORDER.length:i;};
 export function deliveryStages(rows){return [...new Set(rows.map(r=>r.stage))].sort((a,b)=>stageRank(a)-stageRank(b)||String(a).localeCompare(String(b),undefined,{numeric:true}));}
 export const MAX_STAGE_COLUMNS=6;
+// Contractual scope, as highlighted green in the MIDP Summary (28 Nov 2026): the stages delivered after the stage received.
+// Incoming RIBA 3 -> RIBA 4 (42) and RIBA 5 (05) are contractual. Incoming RIBA 4 -> RIBA 5 (05) only.
+// An asset in neither list is unconfirmed and is not highlighted. Update both lists when the MIDP Summary changes.
+const INCOMING={'RIBA 3':['Island-DC1','Island-ST1','Island-DT1','Island-G01','Island-G02','Island-SG1','Mainland-G03','Mainland-SG2','Mainland-SWR','Mainland-SIO','Subsea-SS1','Subsea-SS2'],
+ 'RIBA 4':['Island-A33','Island-A36','Island-A37','Island-A48','Island-A52','Island-A55','Island-A57','Island-C48','Island-D48','Island-E48','Island-EW-GRD','Island-EW-LAN','Island-EW-ROD','Island-EW-UTL','Mainland-DI1','Mainland-EW-GRD','Mainland-EW-LAN','Mainland-EW-ROD','Mainland-EW-UTL','Mainland-FP1','Mainland-SL1','Mainland-SL2','Mainland-SP','Mainland-VS1','Mainland-WP1','Mainland-WT1','Mainland-WT2']};
+const CONTRACT_STAGES={'RIBA 3':['42','05'],'RIBA 4':['05']};
+export const incomingStage=scopeId=>Object.keys(INCOMING).find(k=>INCOMING[k].includes(scopeId))||null;
+// true / false for a known asset, null when the asset's incoming stage is not confirmed.
+export function contractualStage(scopeId,stage){const incoming=incomingStage(scopeId);return incoming?CONTRACT_STAGES[incoming].includes(stage):null;}
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const clean=v=>String(v??'').trim();
 const validDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
@@ -63,7 +72,7 @@ export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
   const id=candidates[0].id;if(!byId.has(id))byId.set(id,[]);byId.get(id).push(t);
  }
  const rows=entries.map(e=>{const asset=assetMap.get(e.scopeId),region=asset?.zone||(/^(Island|Mainland)-/.exec(e.scopeId||'')?.[1])||({'102':'Island','121':'Mainland'}[e.actualParcel])||'Region not confirmed';
-  return {...e,actualOriginator:e.actualOriginator||'Not assigned',category:deliverableCategory(e),stage:deliverableStage(e),region,assetLabel:(asset?.code||e.scopeId||'Asset not assigned')+' · '+(e.scopeName||asset?.name||''),...deliveryState(e,byId.get(e.id)||[],tracker?.columns||[],asOf)};
+  return {...e,actualOriginator:e.actualOriginator||'Not assigned',category:deliverableCategory(e),stage:deliverableStage(e),contractual:contractualStage(e.scopeId,deliverableStage(e)),region,assetLabel:(asset?.code||e.scopeId||'Asset not assigned')+' · '+(e.scopeName||asset?.name||''),...deliveryState(e,byId.get(e.id)||[],tracker?.columns||[],asOf)};
  });
  return {rows,asOf,loaded:!!midp?.source,trackerLoaded:!!tracker?.source,ambiguousTracker,sources:{midp:midp?.source?.checkedAt||null,tracker:tracker?.source?.checkedAt||null,logs:midp?.submissionLogs||[],sync:midp?.submissionSync||null}};
 }
