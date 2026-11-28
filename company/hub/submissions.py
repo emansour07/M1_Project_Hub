@@ -1,4 +1,5 @@
 """Owner-published external logs; source Excel files remain read-only."""
+import csv
 import io
 import json
 import re
@@ -10,7 +11,7 @@ def confirmed_scope(scope):
     return [{**a,"aliases":list(dict.fromkeys(str(v).upper() for v in [*a.get("aliases",[]),a.get("code"),a.get("proposed"),NEW_ASSET_CODES.get(a["id"])] if v))} for a in scope]
 from datetime import date, datetime, timezone, timedelta
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET
@@ -161,6 +162,17 @@ def api(req,action):
         midp=Snapshot.objects.filter(key='midp').first();words=text(req.GET.get('q')).upper().split();es=midp.data.get('entries',[]) if midp else []
         found=[e for e in es if words and all(w in ' '.join(text(e.get(k)) for k in ['name','description','scopeId','discipline']).upper() for w in words)][:40]
         return JsonResponse({'entries':[{k:e.get(k) for k in ['name','description','discipline']}|{'asset':e.get('scopeId')} for e in found]})
+    if action=='unmapped' and req.method=='GET':
+        # Owner-only CSV of ARX → SAPAC log entries that match no single MIDP deliverable.
+        report=next((r for r in reports() if r.get('stage')=='arxSapac'),None)
+        if not report:return JsonResponse({'error':'No ARX → SAPAC log is published.'},status=404)
+        midp=Snapshot.objects.filter(key='midp').first();m=match(midp.data.get('entries',[]) if midp else [],report,scope_rows())
+        safe=lambda v:"'"+text(v) if re.match(r'^[=+@\-\t\r]',text(v)) else text(v)
+        out=io.StringIO();w=csv.writer(out,quoting=csv.QUOTE_ALL,lineterminator='\r\n')
+        w.writerow(['Submitted document','Title','Submission date','Review ID','Revision','Outcome','Why not mapped','Detail','Log row','Log file','Log date'])
+        for kind,rows in [('Not in the MIDP',m['unmatched']),('More than one match',m['ambiguous'])]:
+            for r in rows:w.writerow([safe(x) for x in [r.get('name'),r.get('title'),r.get('date'),r.get('reference'),r.get('revision'),r.get('status'),kind,r.get('reason'),r.get('sourceRow'),report.get('source'),report.get('asOf')]])
+        res=HttpResponse('\ufeff'+out.getvalue(),content_type='text/csv; charset=utf-8');res['Content-Disposition']='attachment; filename="M1_ARX_SAPAC_Not_Mapped_'+text(report.get('asOf'))+'.csv"';res['Cache-Control']='no-store';return res
     if req.method!='POST':return JsonResponse({'error':'Method not allowed.'},status=405)
     try:
         if len(req.body)>4000000:raise ValueError('Use a file smaller than 4 MB.')

@@ -139,7 +139,9 @@ function render(){if(!H)return;const {esc}=H,rows=selected(),counts=deliveryCoun
  const names=[['arxSapac','ARX–SAPAC'],['sapacMace','SAPAC–MACE']].map(([stage,name])=>({name,stage,issue:logIssue(stage),log:logs.find(x=>x.stage===stage)}));
  $('monitor-message').innerHTML=!loaded?'Loading the project delivery plan…':names.some(n=>n.issue)?names.map(n=>'<strong class="'+(n.issue?'dm-bad':'dm-good')+'" title="'+esc(n.issue||'Loaded · log date '+n.log.asOf+' · '+num(n.log.matched)+' matched')+'">'+n.name+'</strong>').join(''):'';
  $('monitor-message').hidden=!$('monitor-message').innerHTML;
- $('monitor-sources').textContent=report?'Snapshot '+report.asOf+' · TIDPs '+stamp(report.sources.midp)+' · Tracker '+stamp(report.sources.tracker)+' (Dubai)':'';
+ // Only the two source names: green when read within the last hour, red otherwise. The time is on hover.
+ const synced=t=>!!t&&Date.now()-t<3600000;
+ $('monitor-sources').innerHTML=report?[['TIDPs',report.sources.midp],['Tracker',report.sources.tracker]].map(([name,t])=>'<strong class="'+(synced(t)?'dm-good':'dm-bad')+'" title="'+esc(name+(t?' last read '+stamp(t)+' (Dubai)':' not loaded')+(synced(t)?'':' — not synced in the last hour'))+'">'+name+'</strong>').join(''):'';
  renderRegister(rows);renderExport(rows);
 }
 // One stacked status bar. labels=true prints quantities inside segments that are wide enough.

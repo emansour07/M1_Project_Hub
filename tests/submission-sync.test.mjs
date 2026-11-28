@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {Dat
 import {utils,write} from 'xlsx';
 import {logStage,pickLogFiles,locateLogTable,logDateOrder,logFromSheets,registerTable,registerRows,registerDay} from '../submission-sync-core.mjs';
 import {syncSubmissionLogs,submissionSyncStatus} from '../submission-sync.mjs';
-import {SubmissionStore} from '../submissions.mjs';
+import {SubmissionStore,submissionGaps,gapsCsv,submissionsRoute} from '../submissions.mjs';
 import {validateLog,matchLog} from '../submissions-core.mjs';
 const name='M1-102-SAP-US1-05-BM003-BNM-XX-900001',other='M1-102-SAP-US2-05-BM003-BNM-XX-900001';
 const entries=[{id:'one',name:name+'-R00',scopeId:'Island-A33',discipline:'ARCH'},{id:'two',name:other,scopeId:'Island-A36'}];
@@ -94,4 +94,18 @@ test('MACE register: every category sheet, drawing number from Item Description,
  assert.equal(log.table.dateOrder,'register');assert.equal(valid.rows.length,5);assert.equal(m.matched,2);assert.equal(m.unmatched.length,2);
  assert.equal(m.byId.one.date,'2026-11-10');assert.equal(m.byId.one.status,'Approved');assert.equal(m.byId.one.history.length,2);assert.equal(m.byId.two.status,'Code X1');
  assert.throws(()=>logFromSheets([{name:'S',rows:registerSheet(['1','x','y','','','','','','','','','','','',''])}],{stage:'sapacMace',source:'a',asOf:'2026-11-20'}),/no dated revisions/);
+});
+test('unmapped ARX–SAPAC entries are listed with the reason; SAPAC–MACE extras and matched rows are not',()=>{
+ const twin=[...entries,{id:'three',name:name+'-R00',scopeId:'Island-A33',discipline:'STR'}];
+ const arx={stage:'arxSapac',source:'M1-ARX-SAP-Review_Report.xlsx',asOf:'2026-11-25',rows:[{name:other+'.rvt',date:'2026-11-10',reference:'1',status:'Approved',sourceRow:3},{name:'M1-102-SAP-US1-05-ST999-DWG-XX-000001.pdf',title:'UNKNOWN SHEET',date:'2026-11-11',reference:'2',revision:'R00',status:'Rejected',sourceRow:4},{name:name+'.rvt',date:'2026-11-12',reference:'3',status:'',sourceRow:5}]};
+ const mace={stage:'sapacMace',source:'m.xlsx',asOf:'2026-11-25',rows:[{name:'M1-SAP-FXX-DRS-CIV-0005',date:'2026-11-10'}]};
+ const g=submissionGaps(twin,[arx,mace],[]);assert.equal(g.stage,'arxSapac');assert.equal(g.total,3);assert.equal(g.asOf,'2026-11-25');
+ assert.deepEqual(g.rows.map(r=>[r.kind,r.name,r.title,r.date,r.reference,r.status,r.sourceRow]),[['Not in the MIDP','M1-102-SAP-US1-05-ST999-DWG-XX-000001.pdf','UNKNOWN SHEET','2026-11-11','2','Rejected',4],['More than one match',name+'.rvt','','2026-11-12','3','',5]]);
+ assert.equal(submissionGaps(twin,[mace],[]),null);assert.deepEqual(submissionGaps(entries,[{...arx,rows:[arx.rows[0]]}],[]).rows,[]);
+});
+test('unmapped CSV is owner-only, neutralises formula cells and is not attached to public data',async()=>{
+ const csv=gapsCsv({source:'log.xlsx',asOf:'2026-11-25',rows:[{kind:'Not in the MIDP',name:'=HYPERLINK("x")',title:'A "quoted" title',date:'2026-11-11',reference:'2',revision:'R00',status:'Rejected',reason:'No matching document number in the current MIDP',sourceRow:4}]});
+ const lines=csv.replace(/^\ufeff/,'').split('\r\n');assert.equal(lines.length,2);assert.match(lines[0],/^"Submitted document","Title","Submission date"/);
+ assert.match(lines[1],/^"'=HYPERLINK\(""x""\)","A ""quoted"" title","2026-11-11","2","R00","Rejected","Not in the MIDP"/);assert.match(lines[1],/"4","log.xlsx","2026-11-25"$/);
+ const {db,env}=environment();try{const request=new Request('https://api.example/api/submissions/unmapped'),denied=await submissionsRoute({env},request,false);assert.equal(denied.status,403);}finally{db.close();}
 });
