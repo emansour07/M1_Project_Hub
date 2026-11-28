@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';
-import {validateLog,matchLog,attachLogs,attachInternal,documentKey,submissionDay,mapLogRows,suggestColumns,parseLogCSV} from '../submissions-core.mjs';
+import {validateLog,matchLog,attachLogs,attachInternal,documentKey,submissionDay,mapLogRows,suggestColumns,parseLogCSV,parseMappingCSV,mergeMappings} from '../submissions-core.mjs';
 import {SubmissionStore,submissionsRoute} from '../submissions.mjs';
 import {deliverySummary} from '../midp-summary.mjs';
 const name='M1-102-SAP-US1-05-BM003-BNM-XX-900001';
@@ -42,4 +42,20 @@ test('owner mapping survives formats and code updates but stale target and dupli
 });
 test('optional title column supports a drawing number without a file-name column',()=>{
  const data=[['Document title','Submission date'],['Issued '+name+'-R00 title','2026-11-10']];const r=mapLogRows(data,0,suggestColumns(data[0]),'ISO');assert.equal(matchLog(entries,{rows:r}).matched,1);
+});
+
+
+test('checked CSV mappings merge atomically and guard against changed MIDP titles',()=>{
+ const source=name.replace('900001','700001'),target=name;
+ const imported=parseMappingCSV('source,target,targetDescription\n'+source+','+target+',Foundation plan');
+ const rules=mergeMappings([],imported);assert.equal(rules[0].targetDescription,'Foundation plan');
+ assert.throws(()=>mergeMappings(rules,[{source,target:name.replace('900001','900002')}]),/Conflicting/);
+ assert.equal(rules[0].target,target);
+ const p=validateLog({...input(),mappings:rules,rows:[{name:source+'.pdf',date:'2026-11-10'}]});
+ assert.equal(matchLog([{...entries[0],description:'FOUNDATION PLAN'}],p).matched,1);
+ assert.equal(matchLog([{...entries[0],description:'Roof plan'}],p).matched,0);
+ assert.match(matchLog([{...entries[0],description:'Roof plan'}],p).unmatched[0].reason,/title changed/);
+ assert.throws(()=>parseMappingCSV('old,new\na,b'),/source and target/);
+ const aliasSource=source.replace('-102-SAP-US1-','-FXX-ARX-A33-');
+ assert.equal(matchLog([{...entries[0],description:'Roof plan'}],{...p,rows:[{...p.rows[0],name:aliasSource}]},aliasScope).matched,0);
 });

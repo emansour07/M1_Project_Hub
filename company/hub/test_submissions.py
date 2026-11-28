@@ -17,6 +17,15 @@ class SubmissionTests(TestCase):
         self.assertEqual(m['unmatched'][0]['suggestions'][0]['id'],'one')
         r['mappings']=[dict(source=e['name'].replace('000001','700001'),target=e['name'])]
         self.assertEqual(match([e],r,scope)['matched'],1)
+    def test_saved_title_guard(self):
+        source=NAME.replace('900001','700001')
+        p=dict(stage='arxSapac',source='checked.xlsx',asOf='2026-11-25',rows=[dict(name=source,date='2026-11-10')],mappings=[dict(source=source,target=NAME,targetDescription='Foundation plan')])
+        p=validate(p)
+        self.assertEqual(p['mappings'][0]['targetDescription'],'Foundation plan')
+        self.assertEqual(match([dict(id='one',name=NAME,description='FOUNDATION PLAN')],p)['matched'],1)
+        result=match([dict(id='one',name=NAME,description='Roof plan')],p)
+        self.assertEqual(result['matched'],0)
+        self.assertIn('title changed',result['unmatched'][0]['reason'])
     def setUp(self):
         self.entries=[dict(id='one',name=NAME+'-R00',scopeId='Island-A33',discipline='ARCH')]
         Snapshot.objects.create(key='midp',data={'entries':self.entries})

@@ -1,5 +1,11 @@
 # M1 Project Hub — Django company review
 
+## Checked submission mappings
+
+The owner submission workspace accepts a mapping CSV with `source`, `target` and optional `targetDescription` columns. Imports merge into the selected stage, reject conflicting saved assignments, and remain a preview until the log is published. Export the saved mappings for review or backup. A mapping with an expected MIDP title stops receiving submission credit if that title changes. Known code aliases, revisions and file formats still share the confirmed identity; ambiguous TIDP duplicates remain unresolved. The MIDP submission history displays the original submitted filenames and match basis.
+
+The November 2026 reconciliation CSV files are local deliverables, not repository seed data. The live project log must be published through owner access; deploying code does not upload or fabricate submission data. SAPAC-MACE package-level logs require a file manifest before package dates can be credited to individual deliverables.
+
 ## 28 November 2026 - Project delivery progress
 
 The Overview starts with a quantity-based view of every MIDP deliverable type: a project doughnut, then region, asset, discipline and RIBA-stage stacked bars. Scoped Subsea deliverables remain a separate region. Filters cascade and chart segments filter the register. Planned dates select deliverables, not historical snapshots. A51 stays excluded. Every TIDP row remains one deliverable; formats and submission rounds do not increase quantities.

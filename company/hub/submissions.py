@@ -39,7 +39,9 @@ def mappings(value=None):
         if not isinstance(r,dict):raise ValueError('Invalid saved match.')
         source=key(r.get('source'));target=key(r.get('target'))
         if not source or not target or len(source)>500 or len(target)>500 or len(numbers(r.get('source')))>1 or len(numbers(r.get('target')))>1 or source in seen:raise ValueError('Each saved match needs one distinct source and one target document number.')
-        seen.add(source);out.append(dict(source=source,target=target))
+        description=text(r.get('targetDescription'))
+        if len(description)>500:raise ValueError('Expected title must be at most 500 characters.')
+        seen.add(source);out.append(dict(source=source,target=target,**({'targetDescription':description} if description else {})))
     return out
 
 def identity_keys(v,scope):
@@ -115,13 +117,15 @@ def validate(data):
     if len(json.dumps(result,ensure_ascii=False,separators=(',',':')).encode())>1700000:raise ValueError('The normalized log exceeds 1.7 MB.')
     return result
 def match(entries,report,scope=None,include_suggestions=False):
-    scope=confirmed_scope(scope or []);resolve=resolver(entries,scope);rules={key(r['source']):r['target'] for r in report.get('mappings',[])};groups={};unmatched=[];ambiguous=[]
+    scope=confirmed_scope(scope or []);resolve=resolver(entries,scope);rules={key(r['source']):r for r in report.get('mappings',[])};groups={};unmatched=[];ambiguous=[]
     for r in report.get('rows',[]):
         override=rules.get(key(r['name']))
         if not override:
-            keys=set(identity_keys(r['name'],scope));targets={target for source,target in rules.items() if keys.intersection(identity_keys(source,scope))}
-            if len(targets)==1:override=next(iter(targets))
-        found=resolve(override) if override else list({e['id']:e for v in [r['name'],r.get('title','')] if v for e in resolve(v)}.values())
+            keys=set(identity_keys(r['name'],scope));targets={json.dumps(rule,sort_keys=True) for source,rule in rules.items() if keys.intersection(identity_keys(source,scope))}
+            if len(targets)==1:override=json.loads(next(iter(targets)))
+        found=resolve(override['target']) if override else list({e['id']:e for v in [r['name'],r.get('title','')] if v for e in resolve(v)}.values())
+        if override and override.get('targetDescription') and len(found)==1 and re.sub(r'[^A-Z0-9]','',text(found[0].get('description')).upper())!=re.sub(r'[^A-Z0-9]','',override['targetDescription'].upper()):
+            unmatched.append({**r,'reason':'Saved target title changed; verify the mapping again','suggestions':[]});continue
         if not found:unmatched.append({**r,'reason':'Saved target no longer matches the MIDP' if override else 'No matching document number in the current MIDP','suggestions':suggestions(entries,r['name'],scope) if include_suggestions and not override else []});continue
         if len(found)!=1:ambiguous.append({**r,'reason':'More than one MIDP deliverable matches','candidates':[{k:c.get(k) for k in ['id','name','sheet','row','discipline']}|{'asset':c.get('scopeId')} for c in found]});continue
         groups.setdefault(found[0]['id'],[]).append({**r,'matchReason':'Owner-saved match' if override else found[0]['matchReason']})
