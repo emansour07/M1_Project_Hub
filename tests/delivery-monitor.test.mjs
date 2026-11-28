@@ -25,11 +25,11 @@ test('blank/zero progress is unknown, not outstanding; tracker submitted is not 
  assert.equal(deliveryState({...entry(),internalSubmission:log('2026-11-02','Rejected')},[],[],asOf).state,'progress');
  assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2027-01-01','Approved')}},[],[],asOf).state,'unknown');
 });
-test('one TIDP row each, no duplicate credit, no cross-stage matching, no original-model or reports credit',()=>{
+test('one TIDP row each, no duplicate credit, no cross-stage matching, all categories retained with no cross-category tracker credit',()=>{
  const one=entry(),two={...entry('two'),name:name.replace('-05-','-42-')},excluded={...entry('a51'),scopeId:'Island-A51'},report={...entry('report'),name:name.replace('-BNM-','-RPT-')};
  const data={midp:{source:{checkedAt:1},entries:[one,two,excluded,report]},tracker:{rows:[{name:name.replace('-102-SAP-US1-','-FXX-ARX-A33-'),scopeId:'Island-A33',log:40}],columns:[]},scope};
- let r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,2);assert.deepEqual(r.rows.map(r=>r.state),['progress','unknown']);
- data.midp.entries.push({...one,id:'duplicate'});r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,3);assert(r.rows.every(r=>r.state==='unknown'));assert.equal(r.ambiguousTracker,1);
+ let r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,3);assert.deepEqual(r.rows.map(r=>r.state),['progress','unknown','unknown']);
+ data.midp.entries.push({...one,id:'duplicate'});r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,4);assert(r.rows.every(r=>r.state==='unknown'));assert.equal(r.ambiguousTracker,1);
 });
 test('formats and submission histories never inflate deliverable quantities; scopes and dates cascade',()=>{
  const entries=[{...entry(),formats:['rvt','nwc','ifc','dwfx'],submissions:{arxSapac:log('2026-11-10','Rejected')}},{...entry('drawing'),name:name.replace('BNM','DWG'),plannedDate:null}];
@@ -46,4 +46,17 @@ test('PPTX contains editable charts, source dates, return colour and reconciled 
  for(const file of charts){const xml=strFromU8(zip[file]);assert.match(xml,/E38A27/i);assert.match(xml,/externalData/);assert.match(xml,/Returned/);}
  assert(Object.keys(zip).some(n=>/embeddings\/.*\.xlsx$/.test(n)));
  assert.match(strFromU8(zip['ppt/slides/slide1.xml']),/2026-11-28/);
+});
+
+
+test('all MIDP categories reconcile with the project total and category filters',()=>{
+ const types=['BNM','DWG','RPT','CAL','SPE','SCH','ZZZ'];
+ const entries=types.map((type,i)=>({...entry(String(i)),name:name.replace('BNM',type),category:type==='ZZZ'?'Custom deliverables':undefined,submissions:{arxSapac:log('2026-11-10',i===2?'Rejected':'Approved')}}));
+ const report=buildDeliveryMonitor({midp:{source:{},entries},scope},asOf),counts=deliveryCounts(report.rows);
+ assert.equal(counts.total,types.length);
+ assert.equal(Object.values(counts.categories).reduce((a,b)=>a+b,0),types.length);
+ assert.equal(counts.categories.Reports,1);assert.equal(counts.categories['Custom deliverables'],1);
+ assert.equal(counts.returned,1);assert.equal(counts.submitted,6);
+ assert.equal(filterDeliveryMonitor(report.rows,{category:['Reports','Calculations']}).length,2);
+ for(const level of ['region','asset','discipline','stage'])assert.equal(deliveryGroups(report.rows,level).reduce((n,g)=>n+g.counts.total,0),types.length);
 });

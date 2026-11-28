@@ -50,7 +50,7 @@ export function deliveryState(row,trackerRows=[],columns=[],asOf=today()){
 }
 export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
  const assets=scope?.rows||[],assetMap=new Map(assets.map(a=>[a.id,a]));
- const entries=(midp?.entries||[]).filter(e=>['Models','Drawings'].includes(deliverableCategory(e))&&e.scopeId!=='Island-A51'&&e.scopeAsset!=='A51');
+ const entries=(midp?.entries||[]).filter(e=>e.scopeId!=='Island-A51'&&e.scopeAsset!=='A51');
  const resolve=submissionResolver(entries,assets),byId=new Map();let ambiguousTracker=0;
  for(const t of tracker?.rows||[]){if(t.missingFromTracker)continue;
   const candidates=[...new Map([t.midpName,t.name].filter(Boolean).flatMap(resolve).filter(e=>!t.scopeId||e.scopeId===t.scopeId).map(e=>[e.id,e])).values()];
@@ -66,7 +66,7 @@ export function filterDeliveryMonitor(rows,filters={}){
  const matches=(key,value)=>!filters[key]?.length||filters[key].includes(value);
  return filterDeliverables(rows,filters).filter(r=>matches('region',r.region)&&matches('state',r.state));
 }
-export function deliveryCounts(rows){const out=Object.fromEntries(DELIVERY_STATES.map(s=>[s.key,0]));for(const r of rows)out[r.state]++;return {...out,total:rows.length,models:rows.filter(r=>r.category==='Models').length,drawings:rows.filter(r=>r.category==='Drawings').length};}
+export function deliveryCounts(rows){const out=Object.fromEntries(DELIVERY_STATES.map(s=>[s.key,0]));for(const r of rows)out[r.state]++;return {...out,total:rows.length,models:rows.filter(r=>r.category==='Models').length,drawings:rows.filter(r=>r.category==='Drawings').length,categories:rows.reduce((counts,r)=>{const category=r.category||'Unclassified';counts[category]=(counts[category]||0)+1;return counts;},{})};}
 export function deliveryGroups(rows,level,withParents=false){
  const pos=HIERARCHY.indexOf(level),fields=withParents?HIERARCHY.slice(0,pos+1):[level],get=(r,k)=>k==='asset'?r.scopeId||'Asset not assigned':k==='discipline'?r.discipline||'Unclassified':r[k];
  const label=(r,k)=>k==='asset'?r.assetLabel:k==='stage'?stageLabel(r.stage):get(r,k);
@@ -76,3 +76,5 @@ export function deliveryGroups(rows,level,withParents=false){
 export function progressExportPlan(rows,depth='stage'){
  const last=HIERARCHY.indexOf(depth);return HIERARCHY.slice(0,last+1).flatMap(level=>{const groups=deliveryGroups(rows,level,true),perPage=level==='stage'?7:level==='discipline'?8:10,pages=[];for(let i=0;i<groups.length;i+=perPage)pages.push({level,groups:groups.slice(i,i+perPage),part:Math.floor(i/perPage)+1,parts:Math.ceil(groups.length/perPage)});return pages;});
 }
+
+export function deliveryCategoryText(counts){return Object.entries(counts.categories).sort(([a],[b])=>a.localeCompare(b)).map(([name,n])=>n.toLocaleString('en-GB')+' '+name.toLowerCase()).join(' · ');}

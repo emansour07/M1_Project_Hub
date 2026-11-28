@@ -2,7 +2,7 @@
 
 ## 28 November 2026 - Project delivery progress
 
-The Overview starts with a quantity-based view of models and drawings: a project doughnut, then region, asset, discipline and RIBA-stage stacked bars. Scoped Subsea deliverables remain a separate region. Filters cascade and chart segments filter the register. Planned dates select deliverables, not historical snapshots. A51 stays excluded. Every TIDP row remains one deliverable; formats and submission rounds do not increase quantities.
+The Overview starts with a quantity-based view of every MIDP deliverable type: a project doughnut, then region, asset, discipline and RIBA-stage stacked bars. Scoped Subsea deliverables remain a separate region. Filters cascade and chart segments filter the register. Planned dates select deliverables, not historical snapshots. A51 stays excluded. Every TIDP row remains one deliverable; formats and submission rounds do not increase quantities.
 
 - **Outstanding:** the matched tracker explicitly says Not started.
 - **In progress:** tracker activity or internal review, without a matched ARX-SAPAC submission.
