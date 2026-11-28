@@ -8,7 +8,8 @@ import {midpSnapshot} from './workbooks.mjs';
 import {SubmissionStore} from './submissions.mjs';
 import {STAGES} from './submissions-core.mjs';
 import {pickLogFiles,logFromSheets,LOG_FILE_NAMES} from './submission-sync-core.mjs';
-const KEY='m1/submission-logs/state',INTERVAL=6*3600000,LEASE=120000;
+// READER changes whenever the reading rules change, so a file an older release could not read is tried again at once.
+const KEY='m1/submission-logs/state',INTERVAL=6*3600000,LEASE=120000,READER=2;
 const read=async env=>await(await env.BUCKET.get(KEY))?.json()||{};
 const write=(env,state)=>env.BUCKET.put(KEY,JSON.stringify(state));
 const dubaiDay=value=>{const t=Date.parse(value||'');return Number.isFinite(t)?new Date(t+4*3600000).toISOString().slice(0,10):'';};
@@ -24,7 +25,7 @@ export async function submissionSyncStatus(env){const s=await read(env);return {
 export async function syncSubmissionLogs(env,force=false,services={}){
  const now=Date.now();let state=await read(env);
  if(state.leaseUntil>now)return {updating:true};
- if(!force&&state.checkedAt>now-INTERVAL)return {updating:false,skipped:true};
+ if(!force&&state.reader===READER&&state.checkedAt>now-INTERVAL)return {updating:false,skipped:true};
  state={...state,leaseUntil:now+LEASE,logs:state.logs||{}};await write(env,state);
  try{
   const entries=services.entries||(await midpSnapshot(env))?.entries||[],scope=services.scope||(await getScope(env))?.rows||[];
@@ -48,7 +49,7 @@ export async function syncSubmissionLogs(env,force=false,services={}){
     state.logs[stage]={...previous,state:previous.asOf?'kept':'failed',error:reason,failedVersionId:file.versionId,checkedAt:now};
    }
   }
-  state.checkedAt=now;state.error=null;
- }catch(e){console.error('Submission log check failed',e.message);state.checkedAt=now-INTERVAL+900000;state.error='The ACC submission log folder could not be checked.';}
+  state.checkedAt=now;state.error=null;state.reader=READER;
+ }catch(e){console.error('Submission log check failed',e.message);state.checkedAt=now-INTERVAL+900000;state.reader=READER;state.error='The ACC submission log folder could not be checked.';}
  state.leaseUntil=0;await write(env,state);return {updating:false,...await submissionSyncStatus(env)};
 }

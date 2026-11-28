@@ -26,9 +26,10 @@ export class M1State extends DurableObject {
  async assuranceTick(){if(this.application.env.FORMA_SYNC_ENABLED==='true')return syncIssues(this.application.env);}
  async progressMailTick(){return progressMailTick(this.application.env);}
  async midpTick(){if(this.application.env.FORMA_SYNC_ENABLED==='true')return syncTidpBatch(this.application.env);}
- // Checked with the five-minute jobs; the sync itself only contacts ACC every six hours.
+ // Runs with the per-minute jobs: the cron time is not on an exact minute, so a five-minute modulo never fires.
+ // The sync itself only contacts ACC every six hours; in between it is one stored-state read.
  async submissionTick(){if(this.application.env.FORMA_SYNC_ENABLED==='true')return syncSubmissionLogs(this.application.env);}
  alarm(){const env=this.application.env;return runModelAlarm(this.storage,env.FORMA_SYNC_ENABLED==='true',()=>syncModelSources(env,false,36),()=>nextModelSyncAt(env));}
 }
 const state=env=>env.PROJECT_STATE.get(env.PROJECT_STATE.idFromName('m1'));
-export default {fetch:async(request,env)=>{const r=await state(env).fetch(request);const h=new Headers(r.headers);h.set('X-M1-Worker','2026-11-28-submission-log-sync');return new Response(r.body,{status:r.status,headers:h});},scheduled:(event,env,ctx)=>ctx.waitUntil(Promise.allSettled([state(env).tick(),state(env).midpTick(),state(env).progressMailTick(),...(event.scheduledTime%300000===0?[state(env).assuranceTick(),state(env).submissionTick()]:[])]))};
+export default {fetch:async(request,env)=>{const r=await state(env).fetch(request);const h=new Headers(r.headers);h.set('X-M1-Worker','2026-11-28-submission-log-sync-2');return new Response(r.body,{status:r.status,headers:h});},scheduled:(event,env,ctx)=>ctx.waitUntil(Promise.allSettled([state(env).tick(),state(env).midpTick(),state(env).progressMailTick(),state(env).submissionTick(),...(event.scheduledTime%300000===0?[state(env).assuranceTick()]:[])]))};

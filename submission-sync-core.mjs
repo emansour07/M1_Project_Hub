@@ -17,7 +17,8 @@ export function locateLogTable(sheets){
  let sheet=-1,best=0;(sheets||[]).forEach((s,i)=>{const n=Math.max(0,...s.rows.slice(0,50).map(r=>score(r).key));if(n>best){sheet=i;best=n;}});
  if(sheet<0)throw Error('No sheet has a document column and a submission-date column.');
  let header=0,top=0;sheets[sheet].rows.slice(0,50).forEach((r,i)=>{const n=score(r).all;if(n>top){header=i;top=n;}});
- const map=score(sheets[sheet].rows[header]).map;if(!(map.name>=0||map.title>=0)||!(map.date>=0))throw Error('The log needs a File name (or Document number) column and a Created on (or Submission date) column.');
+ // Name the headings found, so an unfamiliar log layout can be recognised without opening the file.
+ const map=score(sheets[sheet].rows[header]).map;if(!(map.name>=0||map.title>=0)||!(map.date>=0))throw Error('The log needs a File name (or Document number) column and a Created on (or Submission date) column. Sheet "'+text(sheets[sheet].name).slice(0,40)+'", row '+(header+1)+' has: '+(sheets[sheet].rows[header].map(text).filter(Boolean).slice(0,20).map(h=>h.slice(0,40)).join(' | ')||'no headings')+'.');
  return {sheet,sheetName:sheets[sheet].name,header,map};
 }
 // Numeric dates such as 04/05/2026 are only read when the log itself proves the order (a day above 12 somewhere).
