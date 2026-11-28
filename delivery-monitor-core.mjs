@@ -5,7 +5,8 @@ export const DELIVERY_STATES=[
  {key:'outstanding',label:'Outstanding',color:'#8a919b'},
  {key:'progress',label:'In progress',color:'#397fbe'},
  {key:'submitted',label:'Submitted to SAPAC',color:'#228466'},
- {key:'mace',label:'Submitted to MACE',color:'#6f52b5'},
+ {key:'mace',label:'Submitted to MACE',color:'#b5367a'},
+ {key:'approved',label:'Approved by MACE',color:'#7cc243'},
  {key:'returned',label:'Returned — awaiting resubmission',color:'#e38a27'}
 ];
 export const HIERARCHY=['region','asset','discipline','stage'];
@@ -53,7 +54,8 @@ export function deliveryState(row,trackerRows=[],columns=[],asOf=today()){
  if(sapac||mace){
   // The latest round decides. A later SAPAC submission supersedes an earlier MACE round, including its return.
   const current=mace&&(!sapac||mace.date>=sapac.date)?mace:sapac,isReturn=returned(current.status);
-  return {state:isReturn?'returned':current===mace?'mace':'submitted',evidence:(current===mace?'SAPAC–MACE':'ARX–SAPAC')+' log · '+(current.status||'Outcome not supplied'),sapacDate:sapac?.date||null,maceDate:mace?.date||null,outcome:current.status,reference:current.references};
+  // With MACE: approved once MACE's latest code is Approved or Approved w/ comments; otherwise still under review.
+  return {state:isReturn?'returned':current===mace?(/^approved\b/i.test(current.status||'')?'approved':'mace'):'submitted',evidence:(current===mace?'SAPAC–MACE':'ARX–SAPAC')+' log · '+(current.status||'Outcome not supplied'),sapacDate:sapac?.date||null,maceDate:mace?.date||null,outcome:current.status,reference:current.references};
  }
  const internal=latestSubmission(row.internalSubmission,asOf);
  if(internal)return {state:'progress',evidence:'Internal review started '+internal.date,internalDate:internal.date};
@@ -85,6 +87,9 @@ export function filterDeliveryMonitor(rows,filters={}){
  return filterDeliverables(rows,rest).filter(r=>matches('asset',deliveryValue(r,'asset'))&&matches('region',r.region)&&matches('state',r.state));
 }
 export function deliveryCounts(rows){const out=Object.fromEntries(DELIVERY_STATES.map(s=>[s.key,0]));for(const r of rows)out[r.state]++;return {...out,total:rows.length,models:rows.filter(r=>r.category==='Models').length,drawings:rows.filter(r=>r.category==='Drawings').length,categories:rows.reduce((counts,r)=>{const category=r.category||'Unclassified';counts[category]=(counts[category]||0)+1;return counts;},{})};}
+// Completion = submitted by ARX to SAPAC or beyond (with SAPAC, with MACE, approved by MACE). A return is not complete:
+// it awaits resubmission. Approval = approved by MACE. Both are shares of the deliverables counted, not engineering progress.
+export function deliveryRates(counts){const completed=(counts.submitted||0)+(counts.mace||0)+(counts.approved||0),approved=counts.approved||0,total=counts.total||0;return {completed,approved,total,completion:total?completed/total:0,approval:total?approved/total:0};}
 export function deliveryGroups(rows,level,withParents=false){
  const pos=HIERARCHY.indexOf(level),fields=withParents?HIERARCHY.slice(0,pos+1):[level],get=deliveryValue;
  const label=(r,k)=>k==='asset'?r.assetLabel:k==='stage'?stageLabel(r.stage):get(r,k);

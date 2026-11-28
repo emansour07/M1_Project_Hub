@@ -13,8 +13,11 @@ The Overview starts with a quantity-based view of every MIDP deliverable type: a
 - **Outstanding:** no activity or submission is recorded yet, or the matched tracker says Not started. It does not claim work has not started.
 - **In progress:** tracker activity or internal review, without a matched ARX-SAPAC submission.
 - **Submitted to SAPAC:** a matched ARX-SAPAC submission exists and the deliverable is not yet in the SAPAC-MACE log. Approved and Approved w/ comments stay green.
-- **Submitted to MACE:** a MIDP deliverable found in the SAPAC-MACE log as its latest round.
+- **Submitted to MACE:** a MIDP deliverable whose latest round is in the SAPAC-MACE log and is still under review.
+- **Approved by MACE:** MACE's latest code is A (Approved) or B (Approved w/ comments).
 - **Returned - awaiting resubmission:** the latest round is Revise and resubmit or Rejected. A later SAPAC resubmission clears an older return, including an older MACE return.
+**Completion** is the share of the deliverables counted that are submitted to SAPAC, submitted to MACE or approved by MACE; a returned item is not complete. **Approval** is the share approved by MACE. Both measure submission, not engineering progress, and are shown with their quantities for the selection and for every breakdown row.
+
 ARX reports two positions for MIDP deliverables only: submitted by ARX to SAPAC, and submitted by SAPAC to MACE. SAPAC may issue to MACE in packages and beyond the MIDP; those other entries are SAPAC scope, are not reported and are not errors.
 
 Both logs are read automatically from the ACC Submission_Logs folder (`M1-ARX-SAP-Review_Report.xlsx`, `M1-SAP-MAC-Review_Report.xlsx`) every six hours once the Worker is deployed; the owner submission workspace remains available for manual upload. Tracker Submitted alone is not evidence of transmission to SAPAC. The view uses the existing MIDP, tracker and knowledge APIs; no migration or new Autodesk permissions are needed.

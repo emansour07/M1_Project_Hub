@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import PptxGenJS from 'pptxgenjs';
 import {unzipSync,strFromU8} from 'fflate';
-import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan,deliveryPath,deliveryValue,incomingStage,contractualStage} from '../delivery-monitor-core.mjs';
+import {deliveryState,buildDeliveryMonitor,deliveryCounts,filterDeliveryMonitor,deliveryGroups,progressExportPlan,deliveryPath,deliveryValue,incomingStage,contractualStage,deliveryRates} from '../delivery-monitor-core.mjs';
 import {createDeliveryPpt} from '../delivery-monitor-ppt.mjs';
 const name='M1-102-SAP-US1-05-BM010-BNM-XX-900001-R00',entry=(id='one')=>({id,name,scopeId:'Island-A33',scopeAsset:'US1',scopeName:'Accommodation',discipline:'ARCH',category:'Models',plannedDate:'2026-12-01'}),asOf='2026-11-28';
 const log=(date,status)=>({date,status,history:[{date,statuses:status?[status]:[],reference:'R1'}]});
@@ -106,16 +106,16 @@ test('two reported positions: Submitted to SAPAC from the ARX log, Submitted to 
  const sapac=log('2026-11-10','Approved'),mace=log('2026-11-12','Approved');
  // ARX log only: with SAPAC. Both logs: the later MACE round is the position. MACE log only: still reported as with MACE.
  assert.equal(deliveryState({...entry(),submissions:{arxSapac:sapac}},[],[],asOf).state,'submitted');
- assert.deepEqual(deliveryState({...entry(),submissions:{arxSapac:sapac,sapacMace:mace}},[],[],asOf),{state:'mace',evidence:'SAPAC–MACE log · Approved',sapacDate:'2026-11-10',maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
- assert.deepEqual(deliveryState({...entry(),submissions:{sapacMace:mace}},[{fields:{deliveryStatus:'Not started'}}],[],asOf),{state:'mace',evidence:'SAPAC–MACE log · Approved',sapacDate:null,maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
+ assert.deepEqual(deliveryState({...entry(),submissions:{arxSapac:sapac,sapacMace:mace}},[],[],asOf),{state:'approved',evidence:'SAPAC–MACE log · Approved',sapacDate:'2026-11-10',maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
+ assert.deepEqual(deliveryState({...entry(),submissions:{sapacMace:mace}},[{fields:{deliveryStatus:'Not started'}}],[],asOf),{state:'approved',evidence:'SAPAC–MACE log · Approved',sapacDate:null,maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
  // Returns by either party stay orange; a later ARX resubmission to SAPAC supersedes the MACE round.
  assert.equal(deliveryState({...entry(),submissions:{sapacMace:log('2026-11-12','Revise and resubmit')}},[],[],asOf).state,'returned');
  assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2026-11-20','Approved'),sapacMace:log('2026-11-12','Rejected')}},[],[],asOf).state,'submitted');
  // A MACE entry dated after the snapshot is not yet a position.
  assert.equal(deliveryState({...entry(),submissions:{sapacMace:log('2027-01-01','Approved')}},[],[],asOf).state,'outstanding');
  const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),submissions:{sapacMace:mace}},{...entry('c'),submissions:{arxSapac:sapac}}]},scope},asOf).rows,c=deliveryCounts(rows);
- assert.deepEqual([c.outstanding,c.progress,c.submitted,c.mace,c.returned,c.total],[1,0,1,1,0,3]);assert.equal('unknown' in c,false);
- assert.equal(filterDeliveryMonitor(rows,{state:['mace']}).length,1);
+ assert.deepEqual([c.outstanding,c.progress,c.submitted,c.mace,c.approved,c.returned,c.total],[1,0,1,0,1,0,3]);assert.equal('unknown' in c,false);
+ assert.equal(filterDeliveryMonitor(rows,{state:['approved']}).length,1);
 });
 
 test('contractual scope follows the MIDP summary: stages after the incoming stage, unknown assets unmarked',()=>{
@@ -124,4 +124,13 @@ test('contractual scope follows the MIDP summary: stages after the incoming stag
  assert.deepEqual(['42','05','Not provided'].map(s=>contractualStage('Mainland-EW-GRD',s)),[false,true,false]);
  assert.equal(contractualStage('Mainland-SIO','42'),true);assert.equal(contractualStage('Island-NEW','05'),null);
  const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),name:name.replace('-05-','-42-')}]},scope},asOf).rows;assert.deepEqual(rows.map(r=>[r.stage,r.contractual]),[['05',true],['42',false]]);
+});
+test('MACE position: under review is Submitted to MACE, codes A and B are Approved by MACE; completion and approval reconcile',()=>{
+ const state=status=>deliveryState({...entry(),submissions:{arxSapac:log('2026-11-10','Approved'),sapacMace:log('2026-11-12',status)}},[],[],asOf).state;
+ assert.deepEqual(['Under review','','Code X1','Approved','Approved w/ comments','approved with comments','Revise and resubmit','Rejected'].map(state),['mace','mace','mace','approved','approved','approved','returned','returned']);
+ // SAPAC's own approval of an ARX submission is not MACE approval.
+ assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2026-11-10','Approved')}},[],[],asOf).state,'submitted');
+ const rows=['outstanding','outstanding','progress','submitted','submitted','mace','approved','returned'].map((s,i)=>({...entry(String(i)),state:s})),rate=deliveryRates(deliveryCounts(rows));
+ assert.deepEqual([rate.completed,rate.approved,rate.total],[4,1,8]);assert.equal(rate.completion,.5);assert.equal(rate.approval,.125);
+ assert.deepEqual(deliveryRates(deliveryCounts([])),{completed:0,approved:0,total:0,completion:0,approval:0});
 });
