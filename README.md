@@ -10,13 +10,15 @@ The November 2026 reconciliation CSV files are local deliverables, not repositor
 
 The Overview starts with a quantity-based view of every MIDP deliverable type: a project doughnut, then region, asset, discipline and RIBA-stage stacked bars. Scoped Subsea deliverables remain a separate region. Filters cascade and chart segments filter the register. Planned dates select deliverables, not historical snapshots. A51 stays excluded. Every TIDP row remains one deliverable; formats and submission rounds do not increase quantities.
 
-- **Outstanding:** the matched tracker explicitly says Not started.
+- **Outstanding:** no activity or submission is recorded yet, or the matched tracker says Not started. It does not claim work has not started.
 - **In progress:** tracker activity or internal review, without a matched ARX-SAPAC submission.
 - **Submitted to SAPAC:** a matched submission exists. Approved and Approved w/ comments stay green.
 - **Returned - awaiting resubmission:** the latest round is Revise and resubmit or Rejected. A later SAPAC resubmission clears an older return, including an older MACE return.
-- **Progress not confirmed:** no reliable evidence or an unresolved match. Missing or zero-only updates are not labelled untouched.
+- **To check:** the deliverable is in the SAPAC-MACE log with no matched ARX-SAPAC submission. This is a gap in the ARX log to resolve.
 
-Publish external logs through the existing owner submission workspace to populate green/orange figures. Tracker Submitted alone is not evidence of transmission to SAPAC. The view uses the existing MIDP, tracker and knowledge APIs; no migration or new Autodesk permissions are needed.
+ARX submits the deliverables listed in the MIDP to SAPAC. SAPAC issues onward to MACE, sometimes in packages and not limited to the MIDP, so the SAPAC-MACE log is not expected to list every deliverable and its extra entries are not errors.
+
+Both logs are read automatically from the ACC Submission_Logs folder (`M1-ARX-SAP-Review_Report.xlsx`, `M1-SAP-MAC-Review_Report.xlsx`) every six hours once the Worker is deployed; the owner submission workspace remains available for manual upload. Tracker Submitted alone is not evidence of transmission to SAPAC. The view uses the existing MIDP, tracker and knowledge APIs; no migration or new Autodesk permissions are needed.
 
 Export PowerPoint downloads editable charts for the selected filters. Choose project/regions, through assets, through disciplines, or the entire hierarchy; the button previews the slide count. Slides include snapshot date and source/filter notes. CSV includes planned, SAPAC and MACE dates. PptxGenJS is bundled locally for GitHub Pages and the Django package; exports need no cloud presentation service.
 

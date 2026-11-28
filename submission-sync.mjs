@@ -43,7 +43,9 @@ export async function syncSubmissionLogs(env,force=false,services={}){
     state.logs[stage]={state:'published',error:null,itemId:file.id,versionId:data.source.versionId||file.versionId,version:data.source.version??null,name:data.source.name||file.name,fileUpdatedAt:data.source.updatedAt||null,asOf:report.asOf,rows:report.rows.length,sheet:table.sheet,headerRow:table.headerRow,dateOrder:table.dateOrder,publishedAt:now,checkedAt:now};
    }catch(e){
     console.error('Submission log not published',stage,e.message);
-    state.logs[stage]={...previous,state:previous.asOf?'kept':'failed',error:e.message,failedVersionId:file.versionId,checkedAt:now};
+    // SAPAC may issue to MACE in packages, so its log can legitimately list no MIDP deliverable by number.
+    const reason=stage==='sapacMace'&&/No unique MIDP matches/.test(e.message)?'No MIDP deliverable is listed individually in this log, so there is nothing to apply.':e.message;
+    state.logs[stage]={...previous,state:previous.asOf?'kept':'failed',error:reason,failedVersionId:file.versionId,checkedAt:now};
    }
   }
   state.checkedAt=now;state.error=null;

@@ -17,19 +17,19 @@ test('MACE returns apply to current round, not a superseded round; onward log al
  assert.equal(deliveryState(r,[],[],asOf).state,'returned');r.submissions.arxSapac=log('2026-11-20','');assert.equal(deliveryState(r,[],[],asOf).state,'submitted');
  delete r.submissions.arxSapac;assert.equal(deliveryState(r,[],[],asOf).state,'unknown');
 });
-test('blank/zero progress is unknown, not outstanding; tracker submitted is not evidence of SAPAC issue',()=>{
- assert.equal(deliveryState(entry(),[{log:0,loi:null,fields:{}}],[],asOf).state,'unknown');
+test('nothing recorded is outstanding; tracker submitted is not evidence of SAPAC issue',()=>{
+ assert.equal(deliveryState(entry(),[{log:0,loi:null,fields:{}}],[],asOf).state,'outstanding');assert.equal(deliveryState(entry(),[],[],asOf).evidence,'No activity or submission recorded');
  assert.equal(deliveryState(entry(),[{fields:{deliveryStatus:'Not started'}}],[],asOf).state,'outstanding');
  assert.equal(deliveryState(entry(),[{log:20,fields:{deliveryStatus:'Not started'}}],[],asOf).state,'progress');
  assert.equal(deliveryState(entry(),[{fields:{X:'Submitted'}}],[{key:'X',label:'Status'}],asOf).state,'progress');
  assert.equal(deliveryState({...entry(),internalSubmission:log('2026-11-02','Rejected')},[],[],asOf).state,'progress');
- assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2027-01-01','Approved')}},[],[],asOf).state,'unknown');
+ assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2027-01-01','Approved')}},[],[],asOf).state,'outstanding');
 });
 test('one TIDP row each, no duplicate credit, no cross-stage matching, all categories retained with no cross-category tracker credit',()=>{
  const one=entry(),two={...entry('two'),name:name.replace('-05-','-42-')},excluded={...entry('a51'),scopeId:'Island-A51'},report={...entry('report'),name:name.replace('-BNM-','-RPT-')};
  const data={midp:{source:{checkedAt:1},entries:[one,two,excluded,report]},tracker:{rows:[{name:name.replace('-102-SAP-US1-','-FXX-ARX-A33-'),scopeId:'Island-A33',log:40}],columns:[]},scope};
- let r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,3);assert.deepEqual(r.rows.map(r=>r.state),['progress','unknown','unknown']);
- data.midp.entries.push({...one,id:'duplicate'});r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,4);assert(r.rows.every(r=>r.state==='unknown'));assert.equal(r.ambiguousTracker,1);
+ let r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,3);assert.deepEqual(r.rows.map(r=>r.state),['progress','outstanding','outstanding']);
+ data.midp.entries.push({...one,id:'duplicate'});r=buildDeliveryMonitor(data,asOf);assert.equal(r.rows.length,4);assert(r.rows.every(r=>r.state==='outstanding'));assert.equal(r.ambiguousTracker,1);
 });
 test('formats and submission histories never inflate deliverable quantities; scopes and dates cascade',()=>{
  const entries=[{...entry(),formats:['rvt','nwc','ifc','dwfx'],submissions:{arxSapac:log('2026-11-10','Rejected')}},{...entry('drawing'),name:name.replace('BNM','DWG'),plannedDate:null}];
@@ -101,4 +101,18 @@ test('PPTX stage columns: one native chart per RIBA stage, same rows, no separat
  const xml=charts.map(n=>strFromU8(zip[n]));for(const x of xml)assert.match(x,/externalData/);
  for(const name of ['RIBA 2 · 100%','RIBA 4 · 100%','RIBA 5'])assert.equal(xml.filter(x=>x.includes(name+'  |  ')).length,3);
  assert.match(strFromU8(zip['ppt/slides/slide3.xml']),/by RIBA stage/);
+});
+test('To check is only a SAPAC–MACE entry without the ARX–SAPAC submission; a missing MACE entry is never a gap',()=>{
+ const mace={sapacMace:log('2026-11-12','Approved')};
+ assert.deepEqual(deliveryState({...entry(),submissions:mace},[],[],asOf),{state:'unknown',evidence:'In the SAPAC–MACE log; ARX–SAPAC submission not matched',maceDate:'2026-11-12'});
+ // Tracker "Not started" does not hide the conflict; real activity still shows as in progress.
+ assert.equal(deliveryState({...entry(),submissions:mace},[{fields:{deliveryStatus:'Not started'}}],[],asOf).state,'unknown');
+ assert.equal(deliveryState({...entry(),submissions:mace},[{log:30,fields:{}}],[],asOf).state,'progress');
+ assert.equal(deliveryState({...entry(),submissions:mace,internalSubmission:log('2026-11-02','')},[],[],asOf).state,'progress');
+ // Submitted to SAPAC with no onward MACE entry stays green: SAPAC may issue in packages.
+ assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2026-11-10','Approved')}},[],[],asOf).state,'submitted');
+ // A MACE entry dated after the snapshot is not yet evidence of anything.
+ assert.equal(deliveryState({...entry(),submissions:{sapacMace:log('2027-01-01','Approved')}},[],[],asOf).state,'outstanding');
+ const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),submissions:mace}]},scope},asOf).rows,c=deliveryCounts(rows);
+ assert.equal(c.outstanding,1);assert.equal(c.unknown,1);assert.equal(c.total,2);
 });

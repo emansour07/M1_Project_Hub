@@ -6,7 +6,7 @@ export const DELIVERY_STATES=[
  {key:'progress',label:'In progress',color:'#397fbe'},
  {key:'submitted',label:'Submitted to SAPAC',color:'#228466'},
  {key:'returned',label:'Returned — awaiting resubmission',color:'#e38a27'},
- {key:'unknown',label:'Progress not confirmed',color:'#e2e6ec'}
+ {key:'unknown',label:'To check',color:'#e2e6ec'}
 ];
 export const HIERARCHY=['region','asset','discipline','stage'];
 // Short stage names for charts, and their delivery order (code 05 is RIBA 5, so code order would mislead).
@@ -50,8 +50,11 @@ export function deliveryState(row,trackerRows=[],columns=[],asOf=today()){
  if(internal)return {state:'progress',evidence:'Internal review started '+internal.date,internalDate:internal.date};
  const states=trackerRows.map(r=>trackerEvidence(r,columns));
  if(states.includes('progress'))return {state:'progress',evidence:'Matched model tracker · work started'};
- if(states.includes('outstanding'))return {state:'outstanding',evidence:'Matched model tracker · Not started'};
- return {state:'unknown',evidence:mace?'Onward submission found; ARX–SAPAC log match missing':'No confirmed start or SAPAC submission',maceDate:mace?.date||null};
+ // SAPAC may issue to MACE in packages and beyond the MIDP, so a missing SAPAC–MACE entry says nothing.
+ // A SAPAC–MACE entry without the ARX–SAPAC submission behind it is a gap in the ARX log to resolve, not an outstanding item.
+ if(mace)return {state:'unknown',evidence:'In the SAPAC–MACE log; ARX–SAPAC submission not matched',maceDate:mace.date};
+ // Outstanding: nothing recorded yet. It does not claim that work has not started.
+ return {state:'outstanding',evidence:states.includes('outstanding')?'Matched model tracker · Not started':'No activity or submission recorded'};
 }
 export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
  const assets=scope?.rows||[],assetMap=new Map(assets.map(a=>[a.id,a]));
