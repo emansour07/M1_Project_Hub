@@ -9,6 +9,11 @@ export const DELIVERY_STATES=[
  {key:'unknown',label:'Progress not confirmed',color:'#e2e6ec'}
 ];
 export const HIERARCHY=['region','asset','discipline','stage'];
+// Short stage names for charts, and their delivery order (code 05 is RIBA 5, so code order would mislead).
+export const STAGE_SHORT={'21':'RIBA 2 · 50%','22':'RIBA 2 · 100%','31':'RIBA 3 · 50%','32':'RIBA 3 · 100%','41':'RIBA 4 · 50%','42':'RIBA 4 · 100%','50':'IFC','05':'RIBA 5','06':'Redline','07':'As-built','XX':'General','Not provided':'No stage'};
+const STAGE_ORDER=['00','01','21','22','31','32','41','42','50','05','06','07','XX'],stageRank=c=>{const i=STAGE_ORDER.indexOf(c);return i<0?STAGE_ORDER.length:i;};
+export function deliveryStages(rows){return [...new Set(rows.map(r=>r.stage))].sort((a,b)=>stageRank(a)-stageRank(b)||String(a).localeCompare(String(b),undefined,{numeric:true}));}
+export const MAX_STAGE_COLUMNS=6;
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const clean=v=>String(v??'').trim();
 const validDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
@@ -78,8 +83,11 @@ export function deliveryGroups(rows,level,withParents=false){
  return [...groups.values()].map(g=>({...g,counts:deliveryCounts(g.rows)})).sort((a,b)=>a.label.localeCompare(b.label,undefined,{numeric:true}));
 }
 // start = levels already fixed by the selection. depth 'view' charts only the next level below the selection.
-export function progressExportPlan(rows,depth='stage',start=0){
- const last=depth==='view'?Math.min(start,HIERARCHY.length-1):HIERARCHY.indexOf(depth);return HIERARCHY.slice(Math.min(start,last),last+1).flatMap(level=>{const groups=deliveryGroups(rows,level,true),perPage=level==='stage'?7:level==='discipline'?8:10,pages=[];for(let i=0;i<groups.length;i+=perPage)pages.push({level,groups:groups.slice(i,i+perPage),part:Math.floor(i/perPage)+1,parts:Math.ceil(groups.length/perPage)});return pages;});
+// stageColumns puts RIBA stages side by side on each page instead of charting the stage level on its own pages.
+export function progressExportPlan(rows,depth='stage',start=0,stageColumns=false){
+ const all=stageColumns?deliveryStages(rows):[],stages=all.length>1&&all.length<=MAX_STAGE_COLUMNS?all:null;
+ let last=depth==='view'?Math.min(start,HIERARCHY.length-1):HIERARCHY.indexOf(depth);const first=Math.min(start,last);if(stages&&last===3&&first<3)last=2;
+ return HIERARCHY.slice(first,last+1).flatMap(level=>{const groups=deliveryGroups(rows,level,true),perPage=level==='stage'?7:level==='discipline'?8:10,pages=[];for(let i=0;i<groups.length;i+=perPage)pages.push({level,groups:groups.slice(i,i+perPage),part:Math.floor(i/perPage)+1,parts:Math.ceil(groups.length/perPage),stages:level==='stage'?null:stages});return pages;});
 }
 
 export function deliveryCategoryText(counts){return Object.entries(counts.categories).sort(([a],[b])=>a.localeCompare(b)).map(([name,n])=>n.toLocaleString('en-GB')+' '+name.toLowerCase()).join(' · ');}

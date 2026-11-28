@@ -88,3 +88,17 @@ test('PPTX for a selection starts below it, carries the selection text and keeps
  const first=strFromU8(zip['ppt/slides/slide1.xml']);assert.match(first,/A33 delivery status/);assert.match(first,/3 of 9 project deliverables/);
  assert.equal(Object.keys(zip).filter(n=>/^ppt\/charts\/chart\d+\.xml$/.test(n)).length,2);
 });
+test('PPTX stage columns: one native chart per RIBA stage, same rows, no separate stage pages, totals reconcile',async()=>{
+ const rows=[['ARCH','22','progress'],['ARCH','42','submitted'],['STR','42','unknown'],['STR','05','returned']].map(([discipline,stage,state],i)=>({...entry(String(i)),discipline,stage,state,region:'Island',assetLabel:'A33 · Accommodation'}));
+ const plan=progressExportPlan(rows,'stage',0,true);assert.deepEqual(plan.map(p=>p.level),['region','asset','discipline']);assert.deepEqual(plan[0].stages,['22','42','05']);
+ assert.deepEqual(progressExportPlan(rows,'stage',0,false).map(p=>p.level),['region','asset','discipline','stage']);
+ assert.deepEqual(progressExportPlan(rows,'view',3,true).map(p=>[p.level,p.stages]),[['stage',null]]);
+ assert.equal(progressExportPlan(rows.filter(r=>r.stage==='42'),'stage',0,true)[0].stages,null);
+ for(const page of plan)for(const g of page.groups)assert.equal(page.stages.reduce((n,c)=>n+g.rows.filter(r=>r.stage===c).length,0),g.counts.total);
+ const ppt=createDeliveryPpt(PptxGenJS,{rows,report:{asOf,sources:{midp:1,tracker:1,logs:[]}},depth:'stage',stageColumns:true}),zip=unzipSync(await ppt.write({outputType:'uint8array'}));
+ assert.equal(Object.keys(zip).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).length,4);
+ const charts=Object.keys(zip).filter(n=>/^ppt\/charts\/chart\d+\.xml$/.test(n));assert.equal(charts.length,1+3*3);
+ const xml=charts.map(n=>strFromU8(zip[n]));for(const x of xml)assert.match(x,/externalData/);
+ for(const name of ['RIBA 2 · 100%','RIBA 4 · 100%','RIBA 5'])assert.equal(xml.filter(x=>x.includes(name+'  |  ')).length,3);
+ assert.match(strFromU8(zip['ppt/slides/slide3.xml']),/by RIBA stage/);
+});

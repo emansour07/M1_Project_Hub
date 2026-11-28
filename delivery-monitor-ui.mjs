@@ -1,4 +1,4 @@
-import {DELIVERY_STATES,HIERARCHY,buildDeliveryMonitor,filterDeliveryMonitor,deliveryCounts,deliveryGroups,deliveryValue,deliveryPath,progressExportPlan,statusLabel} from './delivery-monitor-core.mjs';
+import {DELIVERY_STATES,HIERARCHY,STAGE_SHORT,deliveryStages,buildDeliveryMonitor,filterDeliveryMonitor,deliveryCounts,deliveryGroups,deliveryValue,deliveryPath,progressExportPlan,statusLabel} from './delivery-monitor-core.mjs';
 import {stageLabel} from './delivery-core.mjs';
 import {exportDeliveryPpt} from './delivery-monitor-ppt.mjs';
 // Delivery status: Whole project → Island/Mainland → Asset → Discipline → RIBA stage.
@@ -8,9 +8,6 @@ const PAGE=25,$=id=>document.getElementById(id);
 const FIELDS={category:['Type','types'],region:['Region','regions'],asset:['Asset','assets'],discipline:['Discipline','disciplines'],stage:['RIBA stage','RIBA stages'],responsibility:['ARX / ATM','parties'],actualOriginator:['Company','companies'],state:['Status','statuses']};
 const PICKS=['category','region','asset','discipline','stage','responsibility','actualOriginator'],SPLITS=['asset','discipline','stage','category','actualOriginator'];
 const SHORT={outstanding:'Outstanding',progress:'In progress',submitted:'Submitted to SAPAC',returned:'Returned',unknown:'Not confirmed'};
-const STAGE_SHORT={'21':'RIBA 2 · 50%','22':'RIBA 2 · 100%','31':'RIBA 3 · 50%','32':'RIBA 3 · 100%','41':'RIBA 4 · 50%','42':'RIBA 4 · 100%','50':'IFC','05':'RIBA 5','06':'Redline','07':'As-built','XX':'General','Not provided':'No stage'};
-// Columns read left to right in delivery order, not code order (05 is RIBA 5).
-const STAGE_ORDER=['00','01','21','22','31','32','41','42','50','05','06','07','XX'],stageRank=c=>{const i=STAGE_ORDER.indexOf(c);return i<0?STAGE_ORDER.length:i;};
 const STATE=Object.fromEntries(DELIVERY_STATES.map(s=>[s.key,s]));
 const num=v=>v.toLocaleString('en-GB'),pct=(a,b)=>b?(a&&a/b<.001?'<0.1':(100*a/b).toFixed(1))+'%':'–';
 const stamp=v=>v?new Date(v).toLocaleString('en-GB',{timeZone:'Asia/Dubai',dateStyle:'medium',timeStyle:'short'}):'not loaded';
@@ -79,7 +76,7 @@ function onClick(e){const t=e.target,by=name=>t.closest('[data-monitor-'+name+']
 function showRegister(){document.querySelector('#delivery-monitor .dm-register')?.scrollIntoView({behavior:'smooth',block:'nearest'});}
 function exportCsv(){H.csv('M1_Delivery_Progress_'+report.asOf+'.csv',[['Deliverable','Description','Category','Region','Asset','Discipline','RIBA stage','Status','Planned date','Latest SAPAC submission','Latest MACE submission','Outcome','Evidence','TIDP','Sheet','Row','Snapshot date'],...selected().map(r=>[r.name,r.description,r.category,r.region,r.scopeId,r.discipline,stageLabel(r.stage),statusLabel(r.state),r.plannedDate,r.sapacDate,r.maceDate,r.outcome,r.evidence,r.sourceName,r.sheet,r.row,report.asOf])]);}
 async function exportPpt(){const button=$('monitor-ppt'),rows=selected(),path=deliveryPath(filters);button.disabled=true;button.textContent='Preparing…';let note='PowerPoint downloaded.';
- try{await exportDeliveryPpt({rows,report,context:contextText(rows),depth:$('monitor-depth').value,start:path.length,title:path.length?full(path.at(-1),sel(path.at(-1))[0])+' delivery status':active()?'Selected deliverables':'Project delivery progress'});}catch(e){note='PowerPoint could not be created. Please try again. '+e.message;}
+ try{await exportDeliveryPpt({rows,report,context:contextText(rows),depth:$('monitor-depth').value,start:path.length,stageColumns,title:path.length?full(path.at(-1),sel(path.at(-1))[0])+' delivery status':active()?'Selected deliverables':'Project delivery progress'});}catch(e){note='PowerPoint could not be created. Please try again. '+e.message;}
  render();$('monitor-message').textContent=note;}
 
 function ring(counts,width){let offset=0;const arcs=DELIVERY_STATES.map(s=>{const share=counts.total?counts[s.key]/counts.total*100:0,html=share?'<circle data-monitor-state="'+s.key+'" cx="60" cy="60" r="46" pathLength="100" fill="none" stroke="'+s.color+'" stroke-width="'+width+'" stroke-dasharray="'+share+' '+(100-share)+'" stroke-dashoffset="'+(-offset)+'"><title>'+H.esc(s.label+': '+num(counts[s.key])+' of '+num(counts.total)+' ('+pct(counts[s.key],counts.total)+')')+'</title></circle>':'';offset+=share;return html;}).join('');
@@ -118,7 +115,7 @@ function render(){if(!H)return;const {esc}=H,rows=selected(),counts=deliveryCoun
  for(const b of document.querySelectorAll('[data-monitor-sort]'))b.setAttribute('aria-pressed',String(b.dataset.monitorSort===sort));
  const top=deliveryGroups(rows,k),max=Math.max(1,...top.map(g=>g.counts.total));
  // RIBA stages sit side by side as columns whenever the selection spans more than one stage.
- const stageList=k==='stage'?[]:[...new Set(rows.map(r=>r.stage))].sort((a,b)=>stageRank(a)-stageRank(b)||cmp(a,b)),canCols=stageList.length>1,cols=canCols&&stageColumns?stageList:null;
+ const stageList=k==='stage'?[]:deliveryStages(rows),canCols=stageList.length>1,cols=canCols&&stageColumns?stageList:null;
  const below=HIERARCHY.includes(k)?HIERARCHY.slice(HIERARCHY.indexOf(k)+1).filter(x=>!(cols&&x==='stage')):[],nested=below.length>0;
  $('monitor-level-title').textContent=top.length+' '+(top.length===1?(k==='stage'?FIELDS[k][0]:FIELDS[k][0].toLowerCase()):FIELDS[k][1]);
  $('monitor-view').hidden=!canCols;for(const b of document.querySelectorAll('[data-monitor-view]'))b.setAttribute('aria-pressed',String((b.dataset.monitorView==='stage')===stageColumns));
@@ -148,4 +145,4 @@ function renderRegister(rows){const {esc}=H,pages=Math.max(1,Math.ceil(rows.leng
  $('monitor-register-sub').textContent=report?.loaded?num(rows.length)+' deliverables in selection':'';
  $('monitor-rows').innerHTML=rows.slice(page*PAGE,(page+1)*PAGE).map(r=>'<tr><td><strong>'+esc(r.name)+'</strong><small>'+esc(r.description)+'</small></td><td>'+esc(r.category)+'</td><td class="nw" title="'+esc(r.assetLabel)+'">'+esc(r.assetLabel.split(' · ')[0])+'<small>'+esc(r.region)+'</small></td><td>'+esc(r.discipline)+'</td><td class="nw" title="'+esc(stageLabel(r.stage))+'">'+esc(STAGE_SHORT[r.stage]||r.stage)+'</td><td><span class="monitor-status" data-status="'+r.state+'" title="'+esc(statusLabel(r.state))+'"><i style="background:'+STATE[r.state].color+'"></i>'+SHORT[r.state]+'</span></td><td class="nw">'+esc(r.plannedDate||'—')+'</td><td class="nw">'+esc(r.sapacDate||'—')+'</td><td class="nw">'+esc(r.maceDate||'—')+'</td><td>'+esc(r.evidence)+(r.outcome?'<small>'+esc(r.outcome)+'</small>':'')+'</td><td class="nw">'+(r.sourceUrl?'<a href="'+esc(r.sourceUrl)+'" target="_blank" rel="noopener">TIDP · '+esc(r.sheet)+' · '+esc(r.row)+' ↗</a>':esc([r.sheet,r.row].filter(Boolean).join(' · ')))+'</td></tr>').join('')||'<tr><td colspan="11">'+(report?.loaded?'No matching deliverables.':'Loading…')+'</td></tr>';
  $('monitor-page').textContent=(rows.length?num(page*PAGE+1)+'–'+num(Math.min(rows.length,(page+1)*PAGE)):'0')+' of '+num(rows.length);$('monitor-prev').disabled=page===0;$('monitor-next').disabled=page>=pages-1;$('monitor-csv').disabled=!rows.length;}
-function renderExport(rows){const slides=1+progressExportPlan(rows,$('monitor-depth').value,deliveryPath(filters).length).length;$('monitor-ppt').disabled=!report?.loaded||!rows.length||invalidDates();$('monitor-ppt').textContent='PowerPoint · '+slides+' slide'+(slides===1?'':'s')+' ↓';}
+function renderExport(rows){const slides=1+progressExportPlan(rows,$('monitor-depth').value,deliveryPath(filters).length,stageColumns).length;$('monitor-ppt').disabled=!report?.loaded||!rows.length||invalidDates();$('monitor-ppt').textContent='PowerPoint · '+slides+' slide'+(slides===1?'':'s')+' ↓';}
