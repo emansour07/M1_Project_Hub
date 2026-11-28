@@ -12,7 +12,11 @@ export function filterDeliverables(rows,filters={}){return rows.filter(r=>{
  return matches(filters.plannedStatus,[d?'with':'without'])&&(!filters.start&&!filters.end||d&&(!filters.start||d>=filters.start)&&(!filters.end||d<=filters.end))&&matches(filters.category,[deliverableCategory(r)])&&matches(filters.parcel,[deliverableParcel(r)])&&matches(filters.asset,[r.scopeId])&&matches(filters.discipline,[r.discipline||'Unclassified'])&&matches(filters.originator,[r.originator])&&matches(filters.actualOriginator,[r.actualOriginator])&&matches(filters.responsibility,[r.scopeResponsibility||'ARX'])&&matches(filters.stage,[deliverableStage(r)])&&matches(filters.format,r.formats||[])&&matches(filters.approval,[r.approvalStatus||'<blank>'])&&(!filters.q||[r.name,r.description,r.scopeName,r.scopeAsset,r.discipline].join(' ').toLowerCase().includes(filters.q.toLowerCase()));
  });}
 // OR within each dropdown; AND between dropdowns. Each facet respects other filters.
+const FACET_FIELDS={category:r=>[deliverableCategory(r)],parcel:r=>[deliverableParcel(r)],asset:r=>[r.scopeId],discipline:r=>[r.discipline||'Unclassified'],originator:r=>[r.originator],actualOriginator:r=>[r.actualOriginator],responsibility:r=>[r.scopeResponsibility||'ARX'],stage:r=>[deliverableStage(r)],format:r=>r.formats||[],approval:r=>[r.approvalStatus||'<blank>'],plannedStatus:r=>[r.plannedDate?'with':'without']};
 export function deliverableFacets(rows,filters={}){
- const fields={category:r=>[deliverableCategory(r)],parcel:r=>[deliverableParcel(r)],asset:r=>[r.scopeId],discipline:r=>[r.discipline||'Unclassified'],originator:r=>[r.originator],actualOriginator:r=>[r.actualOriginator],responsibility:r=>[r.scopeResponsibility||'ARX'],stage:r=>[deliverableStage(r)],format:r=>r.formats||[],approval:r=>[r.approvalStatus||'<blank>'],plannedStatus:r=>[r.plannedDate?'with':'without']};
- return Object.fromEntries(Object.entries(fields).map(([key,values])=>[key,[...new Set(filterDeliverables(rows,{...filters,[key]:[]}).flatMap(values).filter(Boolean))].sort()]));
+ return Object.fromEntries(Object.entries(FACET_FIELDS).map(([key,values])=>[key,[...new Set(filterDeliverables(rows,{...filters,[key]:[]}).flatMap(values).filter(Boolean))].sort()]));
+}
+// Quantity behind each choice of a filter, counted with every other filter applied (one deliverable counts once per value).
+export function deliverableFacetCounts(rows,filters={}){
+ return Object.fromEntries(Object.entries(FACET_FIELDS).map(([key,values])=>{const counts=new Map();for(const r of filterDeliverables(rows,{...filters,[key]:[]}))for(const v of new Set(values(r).filter(Boolean)))counts.set(v,(counts.get(v)||0)+1);return [key,counts];}));
 }
