@@ -10,11 +10,13 @@ export const sources={
  tracker:'urn:adsk.wipemea:dm.lineage:8Uhmx_-pRTGvI__MKFA_-A',
  midp:'urn:adsk.wipemea:dm.lineage:Kx4epOWERrSmEs2pLoS5SA',
  tidpFolder:'urn:adsk.wipemea:fs.folder:co.3hNWncQDQZqVV9YPTm7Pyg',
- tidp:'urn:adsk.wipemea:dm.lineage:ByB-0ya4S7C6oJlJIkCo9A'
+ tidp:'urn:adsk.wipemea:dm.lineage:ByB-0ya4S7C6oJlJIkCo9A',
+ // 1.2_External / SAPAC_Upload_Area / Submission_Logs: the ARX–SAPAC and SAPAC–MACE review reports.
+ submissionLogs:'urn:adsk.wipemea:fs.folder:co.THJaD6sLT3iRZummzaHBsA'
 };
 export async function checkSourceAccess(env){
  const token=await accessToken(env),p=encodeURIComponent('b.'+env.ACC_PROJECT_ID.replace(/^b\./,'')),result=[];
- for(const key of ['reference','progress1','progress2','trackerFolder']){
+ for(const key of ['reference','progress1','progress2','trackerFolder','submissionLogs']){
   try{const data=await getAPS(`/data/v1/projects/${p}/folders/${encodeURIComponent(sources[key])}/contents`,token);result.push({source:key,ok:true,items:(data.data||[]).map(x=>({id:x.id,type:x.type,name:x.attributes?.displayName||x.attributes?.name}))});}
   catch(e){result.push({source:key,ok:false,status:e.status||null,detail:e.providerError||null});}
  }

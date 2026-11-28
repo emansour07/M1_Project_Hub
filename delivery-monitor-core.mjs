@@ -65,7 +65,7 @@ export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
  const rows=entries.map(e=>{const asset=assetMap.get(e.scopeId),region=asset?.zone||(/^(Island|Mainland)-/.exec(e.scopeId||'')?.[1])||({'102':'Island','121':'Mainland'}[e.actualParcel])||'Region not confirmed';
   return {...e,actualOriginator:e.actualOriginator||'Not assigned',category:deliverableCategory(e),stage:deliverableStage(e),region,assetLabel:(asset?.code||e.scopeId||'Asset not assigned')+' · '+(e.scopeName||asset?.name||''),...deliveryState(e,byId.get(e.id)||[],tracker?.columns||[],asOf)};
  });
- return {rows,asOf,loaded:!!midp?.source,trackerLoaded:!!tracker?.source,ambiguousTracker,sources:{midp:midp?.source?.checkedAt||null,tracker:tracker?.source?.checkedAt||null,logs:midp?.submissionLogs||[]}};
+ return {rows,asOf,loaded:!!midp?.source,trackerLoaded:!!tracker?.source,ambiguousTracker,sources:{midp:midp?.source?.checkedAt||null,tracker:tracker?.source?.checkedAt||null,logs:midp?.submissionLogs||[],sync:midp?.submissionSync||null}};
 }
 // One place for the value a deliverable is grouped and filtered by, including the fallbacks shown to users.
 export const deliveryValue=(r,k)=>k==='asset'?r.scopeId||'Asset not assigned':k==='discipline'?r.discipline||'Unclassified':k==='responsibility'?r.scopeResponsibility||'ARX':k==='actualOriginator'?r.actualOriginator||'Not assigned':r[k];
