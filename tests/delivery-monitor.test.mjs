@@ -15,7 +15,7 @@ test('all four approved outcomes use latest round and later resubmission clears 
 test('MACE returns apply to current round, not a superseded round; onward log alone is not SAPAC credit',()=>{
  const r={...entry(),submissions:{arxSapac:log('2026-11-10','Approved'),sapacMace:log('2026-11-12','Rejected')}};
  assert.equal(deliveryState(r,[],[],asOf).state,'returned');r.submissions.arxSapac=log('2026-11-20','');assert.equal(deliveryState(r,[],[],asOf).state,'submitted');
- delete r.submissions.arxSapac;assert.equal(deliveryState(r,[],[],asOf).state,'unknown');
+ delete r.submissions.arxSapac;assert.equal(deliveryState(r,[],[],asOf).state,'returned');
 });
 test('nothing recorded is outstanding; tracker submitted is not evidence of SAPAC issue',()=>{
  assert.equal(deliveryState(entry(),[{log:0,loi:null,fields:{}}],[],asOf).state,'outstanding');assert.equal(deliveryState(entry(),[],[],asOf).evidence,'No activity or submission recorded');
@@ -39,7 +39,7 @@ test('formats and submission histories never inflate deliverable quantities; sco
  assert.equal(progressExportPlan(r.rows).length,4);
 });
 test('PPTX contains editable charts, source dates, return colour and reconciled native chart data',async()=>{
- const rows=['outstanding','progress','submitted','returned','unknown'].map((state,i)=>({...entry(String(i)),state,region:'Island',assetLabel:'A33 · Accommodation',stage:'05'}));
+ const rows=['outstanding','progress','submitted','returned','mace'].map((state,i)=>({...entry(String(i)),state,region:'Island',assetLabel:'A33 · Accommodation',stage:'05'}));
  const ppt=createDeliveryPpt(PptxGenJS,{rows,report:{asOf,sources:{midp:1,tracker:1,logs:[]}},depth:'stage'}),bytes=await ppt.write({outputType:'uint8array'}),zip=unzipSync(bytes);
  assert.equal(Object.keys(zip).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).length,5);
  const charts=Object.keys(zip).filter(n=>/^ppt\/charts\/chart\d+\.xml$/.test(n));assert.equal(charts.length,5);
@@ -82,14 +82,14 @@ test('unassigned deliverables stay selectable and counted under their displayed 
  assert.equal(deliveryGroups(rows,'asset').reduce((n,g)=>n+g.counts.total,0),2);
 });
 test('PPTX for a selection starts below it, carries the selection text and keeps native charts',async()=>{
- const rows=['progress','submitted','unknown'].map((state,i)=>({...entry(String(i)),state,region:'Island',assetLabel:'A33 · Accommodation',stage:i?'05':'42'}));
+ const rows=['progress','submitted','mace'].map((state,i)=>({...entry(String(i)),state,region:'Island',assetLabel:'A33 · Accommodation',stage:i?'05':'42'}));
  const ppt=createDeliveryPpt(PptxGenJS,{rows,report:{asOf,sources:{midp:1,tracker:1,logs:[]}},depth:'view',start:2,title:'A33 delivery status',context:'Whole project › Island › A33 | 3 of 9 project deliverables'}),zip=unzipSync(await ppt.write({outputType:'uint8array'}));
  assert.equal(Object.keys(zip).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).length,2);
  const first=strFromU8(zip['ppt/slides/slide1.xml']);assert.match(first,/A33 delivery status/);assert.match(first,/3 of 9 project deliverables/);
  assert.equal(Object.keys(zip).filter(n=>/^ppt\/charts\/chart\d+\.xml$/.test(n)).length,2);
 });
 test('PPTX stage columns: one native chart per RIBA stage, same rows, no separate stage pages, totals reconcile',async()=>{
- const rows=[['ARCH','22','progress'],['ARCH','42','submitted'],['STR','42','unknown'],['STR','05','returned']].map(([discipline,stage,state],i)=>({...entry(String(i)),discipline,stage,state,region:'Island',assetLabel:'A33 · Accommodation'}));
+ const rows=[['ARCH','22','progress'],['ARCH','42','submitted'],['STR','42','mace'],['STR','05','returned']].map(([discipline,stage,state],i)=>({...entry(String(i)),discipline,stage,state,region:'Island',assetLabel:'A33 · Accommodation'}));
  const plan=progressExportPlan(rows,'stage',0,true);assert.deepEqual(plan.map(p=>p.level),['region','asset','discipline']);assert.deepEqual(plan[0].stages,['22','42','05']);
  assert.deepEqual(progressExportPlan(rows,'stage',0,false).map(p=>p.level),['region','asset','discipline','stage']);
  assert.deepEqual(progressExportPlan(rows,'view',3,true).map(p=>[p.level,p.stages]),[['stage',null]]);
@@ -102,17 +102,18 @@ test('PPTX stage columns: one native chart per RIBA stage, same rows, no separat
  for(const name of ['RIBA 2 · 100%','RIBA 4 · 100%','RIBA 5'])assert.equal(xml.filter(x=>x.includes(name+'  |  ')).length,3);
  assert.match(strFromU8(zip['ppt/slides/slide3.xml']),/by RIBA stage/);
 });
-test('To check is only a SAPAC–MACE entry without the ARX–SAPAC submission; a missing MACE entry is never a gap',()=>{
- const mace={sapacMace:log('2026-11-12','Approved')};
- assert.deepEqual(deliveryState({...entry(),submissions:mace},[],[],asOf),{state:'unknown',evidence:'In the SAPAC–MACE log; ARX–SAPAC submission not matched',maceDate:'2026-11-12'});
- // Tracker "Not started" does not hide the conflict; real activity still shows as in progress.
- assert.equal(deliveryState({...entry(),submissions:mace},[{fields:{deliveryStatus:'Not started'}}],[],asOf).state,'unknown');
- assert.equal(deliveryState({...entry(),submissions:mace},[{log:30,fields:{}}],[],asOf).state,'progress');
- assert.equal(deliveryState({...entry(),submissions:mace,internalSubmission:log('2026-11-02','')},[],[],asOf).state,'progress');
- // Submitted to SAPAC with no onward MACE entry stays green: SAPAC may issue in packages.
- assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2026-11-10','Approved')}},[],[],asOf).state,'submitted');
- // A MACE entry dated after the snapshot is not yet evidence of anything.
+test('two reported positions: Submitted to SAPAC from the ARX log, Submitted to MACE for MIDP items in the SAPAC log',()=>{
+ const sapac=log('2026-11-10','Approved'),mace=log('2026-11-12','Approved');
+ // ARX log only: with SAPAC. Both logs: the later MACE round is the position. MACE log only: still reported as with MACE.
+ assert.equal(deliveryState({...entry(),submissions:{arxSapac:sapac}},[],[],asOf).state,'submitted');
+ assert.deepEqual(deliveryState({...entry(),submissions:{arxSapac:sapac,sapacMace:mace}},[],[],asOf),{state:'mace',evidence:'SAPAC–MACE log · Approved',sapacDate:'2026-11-10',maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
+ assert.deepEqual(deliveryState({...entry(),submissions:{sapacMace:mace}},[{fields:{deliveryStatus:'Not started'}}],[],asOf),{state:'mace',evidence:'SAPAC–MACE log · Approved',sapacDate:null,maceDate:'2026-11-12',outcome:'Approved',reference:'R1'});
+ // Returns by either party stay orange; a later ARX resubmission to SAPAC supersedes the MACE round.
+ assert.equal(deliveryState({...entry(),submissions:{sapacMace:log('2026-11-12','Revise and resubmit')}},[],[],asOf).state,'returned');
+ assert.equal(deliveryState({...entry(),submissions:{arxSapac:log('2026-11-20','Approved'),sapacMace:log('2026-11-12','Rejected')}},[],[],asOf).state,'submitted');
+ // A MACE entry dated after the snapshot is not yet a position.
  assert.equal(deliveryState({...entry(),submissions:{sapacMace:log('2027-01-01','Approved')}},[],[],asOf).state,'outstanding');
- const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),submissions:mace}]},scope},asOf).rows,c=deliveryCounts(rows);
- assert.equal(c.outstanding,1);assert.equal(c.unknown,1);assert.equal(c.total,2);
+ const rows=buildDeliveryMonitor({midp:{source:{},entries:[entry(),{...entry('b'),submissions:{sapacMace:mace}},{...entry('c'),submissions:{arxSapac:sapac}}]},scope},asOf).rows,c=deliveryCounts(rows);
+ assert.deepEqual([c.outstanding,c.progress,c.submitted,c.mace,c.returned,c.total],[1,0,1,1,0,3]);assert.equal('unknown' in c,false);
+ assert.equal(filterDeliveryMonitor(rows,{state:['mace']}).length,1);
 });

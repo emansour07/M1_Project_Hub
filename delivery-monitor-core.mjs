@@ -5,8 +5,8 @@ export const DELIVERY_STATES=[
  {key:'outstanding',label:'Outstanding',color:'#8a919b'},
  {key:'progress',label:'In progress',color:'#397fbe'},
  {key:'submitted',label:'Submitted to SAPAC',color:'#228466'},
- {key:'returned',label:'Returned — awaiting resubmission',color:'#e38a27'},
- {key:'unknown',label:'To check',color:'#e2e6ec'}
+ {key:'mace',label:'Submitted to MACE',color:'#6f52b5'},
+ {key:'returned',label:'Returned — awaiting resubmission',color:'#e38a27'}
 ];
 export const HIERARCHY=['region','asset','discipline','stage'];
 // Short stage names for charts, and their delivery order (code 05 is RIBA 5, so code order would mislead).
@@ -39,21 +39,18 @@ function trackerEvidence(r,columns){
 }
 export function deliveryState(row,trackerRows=[],columns=[],asOf=today()){
  const sapac=latestSubmission(row.submissions?.arxSapac,asOf),mace=latestSubmission(row.submissions?.sapacMace,asOf);
- if(sapac){
-  // A later SAPAC submission supersedes a return on the earlier submitted round.
-  // MACE may also return the current or a later onward-submitted round.
-  const current=mace&&mace.date>=sapac.date?mace:sapac;
-  const isReturn=returned(current.status);
-  return {state:isReturn?'returned':'submitted',evidence:(current===mace?'SAPAC–MACE':'ARX–SAPAC')+' log · '+(current.status||'Outcome not supplied'),sapacDate:sapac.date,maceDate:mace?.date||null,outcome:current.status,reference:current.references};
+ // ARX reports two positions for a MIDP deliverable: submitted by ARX to SAPAC, and submitted by SAPAC to MACE.
+ // SAPAC's own scope beyond the MIDP is not reported: log entries that match no MIDP deliverable never reach here.
+ if(sapac||mace){
+  // The latest round decides. A later SAPAC submission supersedes an earlier MACE round, including its return.
+  const current=mace&&(!sapac||mace.date>=sapac.date)?mace:sapac,isReturn=returned(current.status);
+  return {state:isReturn?'returned':current===mace?'mace':'submitted',evidence:(current===mace?'SAPAC–MACE':'ARX–SAPAC')+' log · '+(current.status||'Outcome not supplied'),sapacDate:sapac?.date||null,maceDate:mace?.date||null,outcome:current.status,reference:current.references};
  }
  const internal=latestSubmission(row.internalSubmission,asOf);
  if(internal)return {state:'progress',evidence:'Internal review started '+internal.date,internalDate:internal.date};
  const states=trackerRows.map(r=>trackerEvidence(r,columns));
  if(states.includes('progress'))return {state:'progress',evidence:'Matched model tracker · work started'};
- // SAPAC may issue to MACE in packages and beyond the MIDP, so a missing SAPAC–MACE entry says nothing.
- // A SAPAC–MACE entry without the ARX–SAPAC submission behind it is a gap in the ARX log to resolve, not an outstanding item.
- if(mace)return {state:'unknown',evidence:'In the SAPAC–MACE log; ARX–SAPAC submission not matched',maceDate:mace.date};
- // Outstanding: nothing recorded yet. It does not claim that work has not started.
+ // Outstanding: no activity or submission recorded yet. It does not claim that work has not started.
  return {state:'outstanding',evidence:states.includes('outstanding')?'Matched model tracker · Not started':'No activity or submission recorded'};
 }
 export function buildDeliveryMonitor({midp,tracker,scope}={},asOf=today()){
