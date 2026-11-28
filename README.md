@@ -1,5 +1,19 @@
 # M1 Project Hub — Django company review
 
+## 28 November 2026 - Project delivery progress
+
+The Overview starts with a quantity-based view of models and drawings: a project doughnut, then region, asset, discipline and RIBA-stage stacked bars. Scoped Subsea deliverables remain a separate region. Filters cascade and chart segments filter the register. Planned dates select deliverables, not historical snapshots. A51 stays excluded. Every TIDP row remains one deliverable; formats and submission rounds do not increase quantities.
+
+- **Outstanding:** the matched tracker explicitly says Not started.
+- **In progress:** tracker activity or internal review, without a matched ARX-SAPAC submission.
+- **Submitted to SAPAC:** a matched submission exists. Approved and Approved w/ comments stay green.
+- **Returned - awaiting resubmission:** the latest round is Revise and resubmit or Rejected. A later SAPAC resubmission clears an older return, including an older MACE return.
+- **Progress not confirmed:** no reliable evidence or an unresolved match. Missing or zero-only updates are not labelled untouched.
+
+Publish external logs through the existing owner submission workspace to populate green/orange figures. Tracker Submitted alone is not evidence of transmission to SAPAC. The view uses the existing MIDP, tracker and knowledge APIs; no migration or new Autodesk permissions are needed.
+
+Export PowerPoint downloads editable charts for the selected filters. Choose project/regions, through assets, through disciplines, or the entire hierarchy; the button previews the slide count. Slides include snapshot date and source/filter notes. CSV includes planned, SAPAC and MACE dates. PptxGenJS is bundled locally for GitHub Pages and the Django package; exports need no cloud presentation service.
+
 ## 17 November 2026 — Coordination & quality
 
 The existing dashboard now has **Client RFIs, Navisworks clashes, Our ACC issues and Model QA/QC** tabs. `/admin/assurance` is the owner-only import and mapping workspace. Viewers can filter current registers by scoped asset, discipline, status and inclusive date range, and export CSV with source dates and working-day age. Imports preserve status values, stable IDs and provenance. A later report replaces only the same named register; absent rows are reported as absent, never inferred to be resolved. Import history retains metadata and change counts, not reconstructable historic row snapshots.
