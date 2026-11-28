@@ -29,7 +29,7 @@ export function logDateOrder(rows,header,column){
 // MACE's document register (the SAPAC–MACE workbook): one sheet per document category, the drawing number inside
 // "Item Description", and one group of columns per revision (Date, WF No., Response, Code). Each dated revision is one round.
 const REVISION=/^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th))\s+revision$/i;
-// MACE review codes as used in the register. An unlisted code is carried through as written, never interpreted.
+// MACE review codes as used in the register, confirmed by the owner on 28 Nov 2026. An unlisted code is carried through as written, never interpreted.
 export const REGISTER_CODES={A:'Approved',B:'Approved w/ comments',C:'Revise and resubmit',D:'Rejected',UR:'Under review'};
 const MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 export function registerDay(value){

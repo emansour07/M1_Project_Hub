@@ -3,7 +3,7 @@ import {stageLabel} from './delivery-core.mjs';
 import {exportDeliveryPpt} from './delivery-monitor-ppt.mjs';
 // Delivery status: Whole project → Island/Mainland → Asset → Discipline → RIBA stage.
 // The view only selects and counts deliverables; every status comes from delivery-monitor-core.mjs.
-let H,source={},report,filters={},split=null,scale='qty',sort='az',page=0,openPick=null,pickSearch='',assets=new Map(),expanded=new Set(),expandAll=false,stageColumns=true;
+let H,source={},report,filters={},split=null,scale='qty',sort='az',page=0,openPick=null,pickSearch='',assets=new Map(),regionCodes=new Map(),expanded=new Set(),expandAll=false,stageColumns=true;
 const PAGE=25,$=id=>document.getElementById(id);
 const FIELDS={category:['Type','types'],region:['Region','regions'],asset:['Asset','assets'],discipline:['Discipline','disciplines'],stage:['RIBA stage','RIBA stages'],responsibility:['ARX / ATM','parties'],actualOriginator:['Company','companies'],state:['Status','statuses']};
 const PICKS=['category','region','asset','discipline','stage','responsibility','actualOriginator'],SPLITS=['asset','discipline','stage','category','actualOriginator'];
@@ -13,7 +13,8 @@ const num=v=>v.toLocaleString('en-GB'),pct=(a,b)=>b?(a&&a/b<.001?'<0.1':(100*a/b
 const stamp=v=>v?new Date(v).toLocaleString('en-GB',{timeZone:'Asia/Dubai',dateStyle:'medium',timeStyle:'short'}):'not loaded';
 const cmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const sel=k=>filters[k]||[];
-const text=(k,v)=>k==='asset'?assets.get(v)?.label||v:k==='stage'?STAGE_SHORT[v]||v:k==='state'?SHORT[v]||statusLabel(v):v;
+// A region carries its parcel code from the scope register (Island 102, Mainland 121); placeholder codes are not shown.
+const text=(k,v)=>k==='region'?v+(regionCodes.has(v)?' ('+regionCodes.get(v)+')':''):k==='asset'?assets.get(v)?.label||v:k==='stage'?STAGE_SHORT[v]||v:k==='state'?SHORT[v]||statusLabel(v):v;
 const full=(k,v)=>k==='stage'?stageLabel(v):k==='state'?statusLabel(v):text(k,v);
 const brief=(k,v)=>k==='asset'?text(k,v).split(' · ')[0]:text(k,v);
 const dated=()=>!!(filters.start||filters.end),invalidDates=()=>!!(filters.start&&filters.end&&filters.start>filters.end);
@@ -50,7 +51,9 @@ export function setupDeliveryMonitor(ctx){H=ctx;const overview=$('overview'),det
  document.addEventListener('pointerdown',e=>{if(openPick&&!e.target.closest?.('#delivery-monitor [data-monitor-pick]')){openPick=null;pickSearch='';renderFilters();}});
  render();
 }
-export function updateDeliveryMonitor(data){source={...source,...data};report=buildDeliveryMonitor(source);assets=new Map(report.rows.map(r=>[deliveryValue(r,'asset'),{label:r.assetLabel,region:r.region}]));render();}
+export function updateDeliveryMonitor(data){source={...source,...data};report=buildDeliveryMonitor(source);assets=new Map(report.rows.map(r=>[deliveryValue(r,'asset'),{label:r.assetLabel,region:r.region}]));
+ const parcels=new Map();for(const a of source.scope?.rows||[]){if(!parcels.has(a.zone))parcels.set(a.zone,new Set());parcels.get(a.zone).add(String(a.parcel??''));}
+ regionCodes=new Map([...parcels].filter(([,codes])=>codes.size===1&&/^\d+$/.test([...codes][0])).map(([zone,codes])=>[zone,[...codes][0]]));render();}
 
 function onClick(e){const t=e.target,by=name=>t.closest('[data-monitor-'+name+']'),pick=by('pick');
  if(pick&&t.closest('[data-monitor-pick]>button')){openPick=openPick===pick.dataset.monitorPick?null:pick.dataset.monitorPick;pickSearch='';renderFilters();return;}
@@ -109,7 +112,7 @@ function render(){if(!H)return;const {esc}=H,rows=selected(),counts=deliveryCoun
  $('monitor-types').innerHTML=types.map(g=>'<button class="dm-mini" data-monitor-type="'+esc(g.value)+'" aria-pressed="'+sel('category').includes(g.value)+'" title="'+esc(g.label+': '+num(g.counts.total)+' · '+pct(g.counts.total,typed.length)+' of '+num(typed.length))+'"><span>'+esc(g.label)+'</span><div class="dm-track">'+stack(g.counts,Math.max(2,Math.sqrt(g.counts.total/typeMax)*100))+'</div><b>'+num(g.counts.total)+'</b></button>').join('');
  const regional=without('region'),regions=deliveryGroups(regional,'region');
  $('monitor-regions-sub').textContent=loaded?'share of '+num(regional.length)+' deliverables · '+(sel('region').length===1?'click again to clear':'click to open'):'';
- $('monitor-regions').innerHTML=regions.map(g=>'<div class="dm-region'+(sel('region').includes(g.value)?' sel':sel('region').length?' dim':'')+'" data-monitor-region="'+esc(g.value)+'" role="button" tabindex="0" aria-pressed="'+sel('region').includes(g.value)+'">'+ring(g.counts,17)+'<div><h3>'+esc(g.label)+'</h3><p>'+pct(g.counts.total,regional.length)+' of '+num(regional.length)+'</p><ul>'+DELIVERY_STATES.filter(s=>g.counts[s.key]).map(s=>'<li><i style="background:'+s.color+'"></i>'+SHORT[s.key]+'<b>'+num(g.counts[s.key])+'</b></li>').join('')+'</ul></div></div>').join('');
+ $('monitor-regions').innerHTML=regions.map(g=>'<div class="dm-region'+(sel('region').includes(g.value)?' sel':sel('region').length?' dim':'')+'" data-monitor-region="'+esc(g.value)+'" role="button" tabindex="0" aria-pressed="'+sel('region').includes(g.value)+'">'+ring(g.counts,17)+'<div><h3>'+esc(text('region',g.value))+'</h3><p>'+pct(g.counts.total,regional.length)+' of '+num(regional.length)+'</p><ul>'+DELIVERY_STATES.filter(s=>g.counts[s.key]).map(s=>'<li><i style="background:'+s.color+'"></i>'+SHORT[s.key]+'<b>'+num(g.counts[s.key])+'</b></li>').join('')+'</ul></div></div>').join('');
  for(const b of document.querySelectorAll('[data-monitor-split]'))b.setAttribute('aria-pressed',String(b.dataset.monitorSplit===k));
  for(const b of document.querySelectorAll('[data-monitor-scale]'))b.setAttribute('aria-pressed',String(b.dataset.monitorScale===scale));
  for(const b of document.querySelectorAll('[data-monitor-sort]'))b.setAttribute('aria-pressed',String(b.dataset.monitorSort===sort));
@@ -146,6 +149,6 @@ function barRows(list,level,depth,parent,max,total,cols,grid){const {esc}=H,afte
    +'<span class="dm-q">'+num(g.counts.total)+'</span><span class="dm-p" title="'+esc('Share of '+num(total)+' selected deliverables')+'">'+pct(g.counts.total,total)+'</span></div>'+(open?barRows(g.rows,next,depth+1,path,max,total,cols,grid):'');}).join('');}
 function renderRegister(rows){const {esc}=H,pages=Math.max(1,Math.ceil(rows.length/PAGE));page=Math.max(0,Math.min(page,pages-1));
  $('monitor-register-sub').textContent=report?.loaded?num(rows.length)+' deliverables in selection':'';
- $('monitor-rows').innerHTML=rows.slice(page*PAGE,(page+1)*PAGE).map(r=>'<tr><td><strong>'+esc(r.name)+'</strong><small>'+esc(r.description)+'</small></td><td>'+esc(r.category)+'</td><td class="nw" title="'+esc(r.assetLabel)+'">'+esc(r.assetLabel.split(' · ')[0])+'<small>'+esc(r.region)+'</small></td><td>'+esc(r.discipline)+'</td><td class="nw" title="'+esc(stageLabel(r.stage))+'">'+esc(STAGE_SHORT[r.stage]||r.stage)+'</td><td><span class="monitor-status" data-status="'+r.state+'" title="'+esc(statusLabel(r.state))+'"><i style="background:'+STATE[r.state].color+'"></i>'+SHORT[r.state]+'</span></td><td class="nw">'+esc(r.plannedDate||'—')+'</td><td class="nw">'+esc(r.sapacDate||'—')+'</td><td class="nw">'+esc(r.maceDate||'—')+'</td><td>'+esc(r.evidence)+(r.outcome?'<small>'+esc(r.outcome)+'</small>':'')+'</td><td class="nw">'+(r.sourceUrl?'<a href="'+esc(r.sourceUrl)+'" target="_blank" rel="noopener">TIDP · '+esc(r.sheet)+' · '+esc(r.row)+' ↗</a>':esc([r.sheet,r.row].filter(Boolean).join(' · ')))+'</td></tr>').join('')||'<tr><td colspan="11">'+(report?.loaded?'No matching deliverables.':'Loading…')+'</td></tr>';
+ $('monitor-rows').innerHTML=rows.slice(page*PAGE,(page+1)*PAGE).map(r=>'<tr><td><strong>'+esc(r.name)+'</strong><small>'+esc(r.description)+'</small></td><td>'+esc(r.category)+'</td><td class="nw" title="'+esc(r.assetLabel)+'">'+esc(r.assetLabel.split(' · ')[0])+'<small>'+esc(text('region',r.region))+'</small></td><td>'+esc(r.discipline)+'</td><td class="nw" title="'+esc(stageLabel(r.stage))+'">'+esc(STAGE_SHORT[r.stage]||r.stage)+'</td><td><span class="monitor-status" data-status="'+r.state+'" title="'+esc(statusLabel(r.state))+'"><i style="background:'+STATE[r.state].color+'"></i>'+SHORT[r.state]+'</span></td><td class="nw">'+esc(r.plannedDate||'—')+'</td><td class="nw">'+esc(r.sapacDate||'—')+'</td><td class="nw">'+esc(r.maceDate||'—')+'</td><td>'+esc(r.evidence)+(r.outcome?'<small>'+esc(r.outcome)+'</small>':'')+'</td><td class="nw">'+(r.sourceUrl?'<a href="'+esc(r.sourceUrl)+'" target="_blank" rel="noopener">TIDP · '+esc(r.sheet)+' · '+esc(r.row)+' ↗</a>':esc([r.sheet,r.row].filter(Boolean).join(' · ')))+'</td></tr>').join('')||'<tr><td colspan="11">'+(report?.loaded?'No matching deliverables.':'Loading…')+'</td></tr>';
  $('monitor-page').textContent=(rows.length?num(page*PAGE+1)+'–'+num(Math.min(rows.length,(page+1)*PAGE)):'0')+' of '+num(rows.length);$('monitor-prev').disabled=page===0;$('monitor-next').disabled=page>=pages-1;$('monitor-csv').disabled=!rows.length;}
 function renderExport(rows){const slides=1+progressExportPlan(rows,$('monitor-depth').value,deliveryPath(filters).length,stageColumns).length;$('monitor-ppt').disabled=!report?.loaded||!rows.length||invalidDates();$('monitor-ppt').textContent='PowerPoint · '+slides+' slide'+(slides===1?'':'s')+' ↓';}
